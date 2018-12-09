@@ -5,6 +5,10 @@ if (!defined("WHMCS")) {
 }
 
 
+//function logModuleCall($a, $b, $c, $d, $e)
+//{
+//};
+
 //     _    ____ ___     ____    _    _     _     ____
 //    / \  |  _ \_ _|   / ___|  / \  | |   | |   / ___|
 //   / _ \ | |_) | |   | |     / _ \ | |   | |   \___ \
@@ -19,26 +23,31 @@ class ScalewayApi
     // Status codes returned by scaleway
     public $statusCodes =
                 [
-                    "200" => "Scaleway API - OK",
-                    "400" => "Scaleway API - Error 400: bad request. Missing or invalid parameter?",
-                    "201" => "Scaleway API - Error 201: This is not an error but you should not be here!",
-                    "204" => "Scaleway API - Error 204: A delete action performed successfully! You should not be here however!",
-                    "401" => "Scaleway API - Error 401: auth error. No valid API key provided!",
-                    "402" => "Scaleway API - Error 402: request failed. Parameters were valid but request failed!",
-                    "403" => "Scaleway API - Error 403: forbidden. Insufficient privileges to access requested resource or the caller IP may be blacklisted!",
-                    "404" => "Scaleway API - Error 404: not found 404 not found 404 not found 404 not found, what are you looking for?",
-                    "50x" => "Scaleway API - Error 50x: means server error. Dude, this is bad..:(",
+                    "200" => "Scaleway API - 200: OK.",
+                    "201" => "Scaleway API - 201: Created.",
+                    "204" => "Scaleway API - 204: No Content.",
+                    "400" => "Scaleway API - 400: Bad Request - Missing or invalid parameter.",
+                    "401" => "Scaleway API - 401: Auth Error - Invalid Token/Organization_ID.",
+                    "402" => "Scaleway API - 402: Request Failed - Parameters were valid but request failed.",
+                    "403" => "Scaleway API - 403: Forbidden - IP Blacklisted or check Images_ID.",
+                    "404" => "Scaleway API - 404: Not found - API Failed or object does not exist.",
+                    "50x" => "Scaleway API - 50x: Backend on fire.",
                     //Custom
                     "123" => "Error 123: means new volume creation failed. This error appear when try to allocate new volume for the new server!"
                 ];
-    
     public static $commercialTypes =
                 [
-                    // Type => processor_cores D[dedicated]/S[hared]C_RAM
-                    "START1-XS"        => "JIFFY_TINY",
-                    "START1-S"       => "JIFFY_SMALL",
-                    "START1-M"       => "JIFFY_MEDIUM",
-                    "START1-L"       => "JIFFY_BIG",
+                    "START1-XS"      => "J_TINY",
+                    "START1-S"       => "J_SMALL",
+                    "START1-M"       => "J_MEDIUM",
+                    "START1-L"       => "J_LARGE",
+                ];
+    private $extra_disk_size =
+                [
+                    "START1-XS"      => 0,
+                    "START1-S"       => 25000000000,
+                    "START1-M"       => 75000000000,
+                    "START1-L"       => 175000000000,
                 ];
     public static $availableLocations =
                 [
@@ -77,9 +86,6 @@ class ScalewayApi
         curl_setopt($call, CURLOPT_URL, $this->callUrl . $endpoint);
 
 
-        
-                    
-        
         curl_setopt($call, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
         
         $headers = [
@@ -152,38 +158,7 @@ class ScalewayApi
     //|_|    \__,_|_.__/|_|_|\___|___/
     //
 
-    // Get all avilable volumes created by API owner
-    public function retrieve_volumes()
-    {
-        $http_method = "GET";
-        $endpoint = "/volumes";
-        $result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), array());
-        return $result;
-    }
-    //Create a new volume in order to be able to create a new server
-    public function create_new_volume($name, $size)
-    {
-        $http_method = "POST";
-        $endpoint = "/volumes";
-        $volumeType = "l_ssd";
-        $postParams =
-            [
-                "name" => $name,
-                "organization" => $this->org_id,
-                "volume_type" => $volumeType,
-                "size" => $size
-            ];
-        $result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), $postParams);
-        return $result;
-    }
-    //Get volume info by ID
-    public function retrieve_volume_info($id)
-    {
-        $http_method = "GET";
-        $endpoint = "/volumes/" . $id;
-        $result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), array());
-        return $result;
-    }
+
     //Delete a volume by it's id
     public function delete_volume($id)
     {
@@ -192,21 +167,37 @@ class ScalewayApi
         $result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), array());
         return $result;
     }
+
     //Function to instantiate a new server
-    public function create_new_server($name, $image, $commercial_type, $tags)
+    public function create_new_server($name, $image_id, $commercial_type, $tags)
     {
         $http_method = "POST";
         $endpoint = "/servers";
 
+        $volumes =
+            [
+                "base_snapshot" => $image_id,
+                "name" => $name . "-rootfs",
+                "volume_type" => "l_ssd",
+                "organization" => $this->org_id
+            ];
+
+        $extra_volume =
+            [
+                "name" => $name . "-extra",
+                "volume_type" => "l_ssd",
+                "size" => $this->extra_disk_size[$commercial_type],
+                "organization" => $this->org_id
+            ];
+        
         $postParams =
             [
                 "organization" => $this->org_id,
                 "name"         => $name,
-                "image"        => $image,
                 "commercial_type" => $commercial_type,
                 "tags"         => $tags,
-                "boot_type"  => "local"
-                //"volumes"      => $volumes
+                "boot_type"  => "local",
+                "volumes"      => json_decode(json_encode($this->extra_disk_size[$commercial_type] > 0 ? array($volumes, $extra_volume) : array($volumes), JSON_FORCE_OBJECT)) // don't ask, lol
             ];
         $server_creation_result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), $postParams);
         if ($server_creation_result['httpCode'] != 210) {
@@ -231,6 +222,20 @@ class ScalewayApi
         $result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), array());
         return $result;
     }
+
+    public function retrieve_snapshots()
+    {
+        $http_method = "GET";
+        $endpoint = "/snapshots";
+        
+        $api_result = $this->call_scaleway_api($this->token, $http_method, $endpoint, array(), array());
+
+        logModuleCall('Scaleway', __FUNCTION__, '', '', json_encode($api_result));
+        return $api_result;
+    }
+
+
+
     //Delete an IPv4 Address
     public function delete_ip_address($ip_id)
     {
@@ -301,6 +306,12 @@ class ScalewayApi
         return $result;
     }
 }
+
+
+
+
+
+
 // ____  _____ ______     _______ ____  ____     __  __    _    _   _    _    ____ _____ __  __ _____ _   _ _____
 /// ___|| ____|  _ \ \   / / ____|  _ \/ ___|   |  \/  |  / \  | \ | |  / \  / ___| ____|  \/  | ____| \ | |_   _|
 //\___ \|  _| | |_) \ \ / /|  _| | |_) \___ \   | |\/| | / _ \ |  \| | / _ \| |  _|  _| | |\/| |  _| |  \| | | |
@@ -344,9 +355,7 @@ class ScalewayServer
     public $commercial_type = "";
     public $tags = array();
     public $arch = "";
-    public $extra_networks = array();
     public $name = "";
-    public $volumes = array();
     public $security_group = array(
                 "id"   => "",
                 "name" => ""
@@ -386,12 +395,14 @@ class ScalewayServer
             $this->commercial_type = $serverInfoResp["commercial_type"];
             $this->tags = $serverInfoResp["tags"];
             $this->arch = $serverInfoResp["arch"];
-            $this->extra_networks = $serverInfoResp["extra_networks"];
-            $this->volumes = $serverInfoResp["volumes"];
             $this->security_group["id"] = $serverInfoResp["security_group"]["id"];
             $this->security_group["name"] = $serverInfoResp["security_group"]["name"];
             $this->organization = $serverInfoResp["organization"];
             $this->queryInfo = "Success!";
+
+            logModuleCall('Scaleway', __FUNCTION__, '', '', json_encode($serverInfoResp));
+
+
             return true;
         } else {
             $this->queryInfo = $this->api->statusCodes[$serverInfoResp["httpCode"]];
@@ -456,29 +467,21 @@ class ScalewayServer
         }
     }
 
-    public static function getArchByCommercialType($cType)
+    public function retrieve_snapshot_id($snapshot_name)
     {
-        $len = strlen($cType);
-        if ($len < 2) {  //to make sure we don't return default arch for null strings
-            return "unknown";
+        $snapshot_id = "";
+
+        $json = json_decode($this->api->retrieve_snapshots()["json"]);
+        foreach ($json->snapshots as $item) {
+            if ($item->name == $snapshot_name) {
+                $snapshot_id= $item->id;
+                break;
+            }
         }
-        //We have two possible architectures to return: arm | x86_64
-        $cType = strtolower($cType);
-        if (strpos($cType, 'arm') !== false || strpos($cType, 'c1') !== false) {   //if contains arm/c1 in name, it is ARM architecture
-            return "arm";
-        } else {
-            return "x86_64";
-        }
-    }
 
-    public static function getImageIDByName($image_name)
-    {
+        logModuleCall('Scaleway', __FUNCTION__, $snapshot_name, '', $snapshot_id);
 
-        $image_id = array(
-            "Ubuntu 18.04 LTS x86_64 25GB" => "baac099f-2536-4d9e-b9ae-b5c4268a07c5"
-        );
-
-        return $image_id[$image_name];
+        return $snapshot_id;
     }
 }
 
@@ -546,7 +549,7 @@ function Scaleway_CreateAccount(array $params)
         $token = $params["configoption1"];
         $org_id = $params["configoption2"];
         $commercial_type = array_keys(ScalewayApi::$commercialTypes)[$params["configoption3"]]; //it provide only index of commercial type so we fetch full name from predefined array
-        $arch = ScalewayServer::getArchByCommercialType($commercial_type);
+        $arch = "NOT IMPLEMENTED";
         $service_id = $params["serviceid"];
         $user_id = $params["userid"];
         $productid = $params["pid"];
@@ -565,9 +568,9 @@ function Scaleway_CreateAccount(array $params)
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        $image_id = ScalewayServer::getImageIDByName($os_name);
+        $image_id = $scwServer->retrieve_snapshot_id($os_name);
         if (strlen($image_id) < 25) {
-            return "Invalid image and/or designated architecture";
+            return "Invalid image and/or designated architecture" . $image_id;
         }
         $tags = array("uid:" . $user_id, "pid:" . $productid, "service_id:" . $service_id, "serverid:" . $params["serverid"]);
         //Check if the current server were terminated
@@ -846,8 +849,6 @@ function Scaleway_AdminServicesTabFields(array $params)
             'Commercial type' => $scwServer->commercial_type,
             'Tags' => implode(",", $scwServer->tags),
             'Architecture' => $scwServer->arch,
-            'Extra networks' => (json_encode($scwServer->extra_networks) == "Array"?$scwServer->extra_networks:""),
-            'Volumes' => (json_encode($scwServer->volumes) == "Array"?$scwServer->volumes:""),
             'Security group' => $scwServer->security_group["name"] . " [" . $scwServer->security_group["id"] . "]",
         );
     } catch (Exception $e) {
@@ -994,8 +995,6 @@ function Scaleway_ClientArea(array $params)
                 'commercialtype' => $scwServer->commercial_type,
                 'tags' => implode(",", $scwServer->tags),
                 'architecture' => $scwServer->arch,
-                'extranetworks' => (json_encode($scwServer->extra_networks) == "Array"?$scwServer->extra_networks:""),
-                'volumes' => (json_encode($scwServer->volumes) == "Array"?$scwServer->volumes:""),
                 'securitygroup' => "Name:" . $scwServer->security_group["name"] . " -- ID: " . $scwServer->security_group["id"],
             ));
     } catch (Exception $e) {
@@ -1042,8 +1041,6 @@ function Scaleway_ClientUpdateStatsFunction(array $params)
                 'commercialtype' => $scwServer->commercial_type,
                 'tags' => implode(",", $scwServer->tags),
                 'architecture' => $scwServer->arch,
-                'extranetworks' => (json_encode($scwServer->extra_networks) == "Array"?$scwServer->extra_networks:""),
-                'volumes' => (json_encode($scwServer->volumes) == "Array"?$scwServer->volumes:""),
                 'securitygroup' => "Name:" . $scwServer->security_group["name"] . " -- ID: " . $scwServer->security_group["id"],
             ));
     } catch (Exception $e) {
