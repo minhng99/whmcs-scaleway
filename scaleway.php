@@ -35,13 +35,34 @@ class ScalewayApi
             //Custom
             "123" => "Error 123: means new volume creation failed. This error appear when try to allocate new volume for the new server!"
         ];
+        
 
-    public static $c_CommercialTypes =
+    public $c_CommercialTypes =
         [
-            "START1-XS"      => "J_TINY",
-            "START1-S"       => "J_SMALL",
-            "START1-M"       => "J_MEDIUM",
-            "START1-L"       => "J_LARGE",
+            "START1-XS" => 
+                [
+                    "Disk" => 25,
+                    "CPU" => 1,
+                    "RAM" => 1,
+                ],
+            "START1-S" => 
+                [
+                    "Disk" => 50,
+                    "CPU" => 2,
+                    "RAM" => 2,
+                ],
+            "START1-M" => 
+                [
+                    "Disk" => 100,
+                    "CPU" => 4,
+                    "RAM" => 4,
+                ],
+            "START1-L" => 
+                [
+                    "Disk" => 200,
+                    "CPU" => 8,
+                    "RAM" => 8,
+                ],
         ];
 
 
@@ -154,45 +175,71 @@ class ScalewayApi
     }
 
     //Function to instantiate a new server
-    public function create_new_server($name, $image_id, $commercial_type, $tags)
+    public function create_new_server($name, $image_id, $f_CommercialType, $tags)
     {
         $http_method = "POST";
         $f_Endpoint = "/servers";
 
+        // GB to Bytes and substitute the rootfs Snapshot size (25GB)
+        $f_ExtraVolumeSizes = ($this->c_CommercialTypes[$f_CommercialType]["Disk"] * 1000000000) - 25000000000;
 
-        $extra_disk_size =
-        [
-            "START1-XS"      => 0,
-            "START1-S"       => 25000000000,
-            "START1-M"       => 75000000000,
-            "START1-L"       => 175000000000,
-        ];
+        // Initilize empty Volume array
+        $f_VolumesArray = array();
 
-        $volumes =
-        [
+        // Add RootFS Snapshot volume
+        array_push($f_VolumesArray, [
             "base_snapshot" => $image_id,
             "name" => $name . "-rootfs",
             "volume_type" => "l_ssd",
             "organization" => $this->c_OrgID
-        ];
-
-        $extra_volume =
-        [
-            "name" => $name . "-extra",
-            "volume_type" => "l_ssd",
-            "size" => extra_disk_size[$commercial_type],
-            "organization" => $this->c_OrgID
-        ];
+        ]);
         
+        // Scaleway don't allow a single volume to have over 150GB, this will be an issue with START1-L
+        $f_MaxAllowedSize = 150000000000;
+        $f_TotalCreatedVolumeCount = 0;
+        
+        // Create f_AdditionalVolumeArray contain an array of volumes depend on required maximum size
+        while ($f_ExtraVolumeSizes) {
+            if ($f_ExtraVolumeSizes > $f_MaxAllowedSize) {
+                // Force create a volume 150GB
+                $f_NewVolumeSize = $f_MaxAllowedSize;
+            } else {
+                // Proceed to create the required volume size
+                $f_NewVolumeSize = $f_ExtraVolumeSizes;
+            }
+        
+            $f_AdditionalVolumeArray[$f_TotalCreatedVolumeCount] =
+            [
+                "name" => $name . "-extra-" . $f_TotalCreatedVolumeCount,
+                "volume_type" => "l_ssd",
+                "size" => $f_NewVolumeSize,
+                "organization" => $this->c_OrgID
+            ];
+
+            // Count how many volumes has been created
+            $f_TotalCreatedVolumeCount++;
+
+            // Substitute the Volume has created
+            $f_ExtraVolumeSizes = $f_ExtraVolumeSizes - $f_NewVolumeSize;
+        }
+
+        // Push each created volumes into f_VolumesArrayObj
+        for ($i = 0; $i < $f_TotalCreatedVolumeCount; $i++)
+        {
+            array_push($f_VolumesArray, $f_AdditionalVolumeArray[$i]);
+        }
+
         $postParams =
         [
             "organization" => $this->c_OrgID,
             "name"         => $name,
-            "commercial_type" => $commercial_type,
+            "commercial_type" => $f_CommercialType,
             "tags"         => $tags,
             "boot_type"  => "local",
-            "volumes"      => json_decode(json_encode(extra_disk_size[$commercial_type] > 0 ? array($volumes, $extra_volume) : array($volumes), JSON_FORCE_OBJECT)) // don't ask, lol
+            "volumes"      =>  (object) $f_VolumesArray
         ];
+
+
         $server_creation_result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), $postParams);
         if ($server_creation_result['httpCode'] != 210) {
             //If created more than one volumes consider removing it as server creation failed
@@ -205,6 +252,10 @@ class ScalewayApi
         $this->c_Server_Action("poweron", $srv_id);
         return $server_creation_result;
     }
+
+
+
+
     //Function which return server info
     public function retrieve_server_info($f_ServerID)
     {
@@ -356,6 +407,8 @@ class ScalewayServer
                 "id"   => "",
                 "name" => ""
             );
+
+
     public function __construct($f_Token, $f_OrgID, $location)
     {
         $this->srvLoc = $location;
@@ -385,7 +438,10 @@ class ScalewayServer
             $this->private_ip = $serverInfoResp["private_ip"];
             $this->dynamic_ip_required = $serverInfoResp["dynamic_ip_required"];
             $this->modification_date = $serverInfoResp["modification_date"];
-            $this->hostname = $serverInfoResp["hostname"];
+
+            // Remove JIFFYHOST- from panel display which is 10 first character
+            $this->hostname = substr($serverInfoResp["hostname"], 10);
+            
             $this->state = $serverInfoResp["state"];
             $this->commercial_type = $serverInfoResp["commercial_type"];
             $this->tags = $serverInfoResp["tags"];
@@ -505,10 +561,6 @@ function Scaleway_MetaData()
 }
 function Scaleway_ConfigOptions()
 {
-    $commercial_types = array();
-    foreach (ScalewayApi::$c_CommercialTypes as $ctype => $cval) {
-        array_push($commercial_types, ($ctype . " - " . $cval));
-    }
     return array(
         // a password field type allows for masked text input
         'Token' => array(
@@ -525,9 +577,10 @@ function Scaleway_ConfigOptions()
         ),
         // the dropdown field type renders a select menu of options
         'Commercial type' => array(
-            'Type' => 'dropdown',
-            'Options' => $commercial_types,
-            'Description' => 'Choose one',
+            'Type' => 'textarea',
+            'Size' => '25',
+            'Default' => '',
+            'Description' => 'Scaleway Server range, e.g: START1-XS',
         ),
         // a text field type allows for single line text input
         'Admin username' => array(
@@ -543,20 +596,19 @@ function Scaleway_CreateAccount(array $params)
     try {
         $f_Token = $params["configoption1"];
         $f_OrgID = $params["configoption2"];
-        $commercial_type = array_keys(ScalewayApi::$c_CommercialTypes)[$params["configoption3"]]; //it provide only index of commercial type so we fetch full name from predefined array
-        $arch = "NOT IMPLEMENTED";
-        $service_id = $params["serviceid"];
-        $user_id = $params["userid"];
-        $productid = $params["pid"];
-        $hostname = explode(".", $params["domain"])[0];
+        $f_CommercialTypes = $params["configoption3"];
+
+        $f_ClientID = $params["model"]["client"]["id"];
+        $f_OrderID = $params["model"]["orderid"];
+        $f_ServiceID = $params["serviceid"];
+
+
+        $hostname = "JIFFYHOST-" . explode(".", $params["domain"])[0];
         $password = $params["password"];
         $os_name = $params["customfields"]["Operating system"];
-        $curr_server_id = $params["customfields"]["Server ID"];
         $location = $params["customfields"]["Location"];
         $scwServer = new ScalewayServer($f_Token, $f_OrgID, $location);
-        if (strlen($curr_server_id) == 36) {
-            $scwServer->setServerId($curr_server_id);
-        }
+
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -565,43 +617,49 @@ function Scaleway_CreateAccount(array $params)
 
         $image_id = $scwServer->retrieve_snapshot_id($os_name);
         if (strlen($image_id) < 25) {
-            return "Invalid image and/or designated architecture" . $image_id;
+            return "Invalid image." . $image_id;
         }
-        $tags = array("uid:" . $user_id, "pid:" . $productid, "service_id:" . $service_id, "serverid:" . $params["serverid"]);
+        $tags = array("ClientID: " . $f_ClientID, "OrderID: " . $f_OrderID, "ServiceID: " . $f_ServiceID);
         //Check if the current server were terminated
         if ($scwServer->retrieveDetails() == true) {
             return "Error! Please terminate current server then create another server again!";
         }
         //Now we have to create the new server and update Server ID field
-        if ($scwServer->create_new_server($hostname, $image_id, $commercial_type, $tags)) {
+        if ($scwServer->create_new_server($hostname, $image_id, $f_CommercialTypes, $tags)) {
             //If server grated, retrive his id and insert to Server ID field, so next time we know his ID.
             $command = "updateclientproduct";
             $adminuser = $params["configoption4"];
-            $values["serviceid"] = $service_id;
+            $values["serviceid"] = $f_ServiceID;
             //We only have to update server ID, the rest of field will be automaticall updated on refresh.
             $values["customfields"] = base64_encode(serialize(array("Server ID"=> $scwServer->server_id )));
             localAPI($command, $values, $adminuser);
         } else {
-            //Log request to understand why it failed
-            $request = "";
+
+            //
+            // REQUEST LOGGING
+            //
+
             //User and service info
-            $request .= "Service ID: " . $service_id . "\n";
-            $request .= "User ID: " . $user_id . "\n";
-            $request .= "Product ID: " . $productid . "\n";
-            $request .= "ORG ID: " . $f_OrgID . "\n";
+            $f_Log_Request .= "ClientID: " . $f_ClientID . "\n";
+            $f_Log_Request .= "OrderID: " . $f_OrderID . "\n";
+            $f_Log_Request .= "Service ID: " . $f_ServiceID . "\n";
+            $f_Log_Request .= "Organization ID: " . $f_OrgID . "\n";
             //Config info
-            $request .= "Commercial type: " . $commercial_type . "\n";
-            $request .= "Location: " . $location . "\n";
+            $f_Log_Request .= "Commercial type: " . $f_CommercialTypes . "\n";
+            $f_Log_Request .= "Location: " . $location . "\n";
             //And finally server info
-            $request .= "Hostname: " . $hostname . "\n";
-            $request .= "Password: " . $password . "\n";
-            $request .= "OS Name: " . $os_name . "\n";
-            $request .= "Arch: " . $arch . "\n";
-            $request .= "Curr server ID: " . $curr_server_id . "\n";
+            $f_Log_Request .= "Hostname: " . $hostname . "\n";
+            $f_Log_Request .= "Password: " . $password . "\n";
+            $f_Log_Request .= "OS Name: " . $os_name . "\n";
             //Response
             $response = $scwServer->queryInfo;
             //Send error to Utilities >> Log >> Module Log
-            logModuleCall('Scaleway', __FUNCTION__, $request, "blabla", $response);
+            logModuleCall('Scaleway', __FUNCTION__, $f_Log_Request, "blabla", $response);
+
+            //
+            // END REQUEST LOGGING
+            //
+
             return "Failed to create server! Check Utilites >> Log >> Module log. Details: " . $scwServer->queryInfo;
         }
     } catch (Exception $e) {
