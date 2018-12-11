@@ -10,12 +10,15 @@ use WHMCS\Database\Capsule;
 //{
 //};
 
-//     _    ____ ___     ____    _    _     _     ____
-//    / \  |  _ \_ _|   / ___|  / \  | |   | |   / ___|
-//   / _ \ | |_) | |   | |     / _ \ | |   | |   \___ \
-//  / ___ \|  __/| |   | |___ / ___ \| |___| |___ ___) |
-// /_/   \_\_|  |___|   \____/_/   \_\_____|_____|____/
-class ScalewayApi
+
+//   █████╗ ██████╗ ██╗     ██████╗ █████╗ ██╗     ██╗     ███████╗
+//  ██╔══██╗██╔══██╗██║    ██╔════╝██╔══██╗██║     ██║     ██╔════╝
+//  ███████║██████╔╝██║    ██║     ███████║██║     ██║     ███████╗
+//  ██╔══██║██╔═══╝ ██║    ██║     ██╔══██║██║     ██║     ╚════██║
+//  ██║  ██║██║     ██║    ╚██████╗██║  ██║███████╗███████╗███████║
+//  ╚═╝  ╚═╝╚═╝     ╚═╝     ╚═════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
+
+class ScalewayAPI
 {
     private $c_Token = "";
     private $c_OrgID = "";
@@ -43,49 +46,37 @@ class ScalewayApi
             "START1-XS" => 
                 [
                     "Disk" => 25,
-                    "CPU" => 1,
+                    "Core" => 1,
                     "RAM" => 1,
                 ],
             "START1-S" => 
                 [
                     "Disk" => 50,
-                    "CPU" => 2,
+                    "Core" => 2,
                     "RAM" => 2,
                 ],
             "START1-M" => 
                 [
                     "Disk" => 100,
-                    "CPU" => 4,
+                    "Core" => 4,
                     "RAM" => 4,
                 ],
             "START1-L" => 
                 [
                     "Disk" => 200,
-                    "CPU" => 8,
+                    "Core" => 8,
                     "RAM" => 8,
                 ],
         ];
 
 
-    public function __construct($f_Token, $f_OrgID, $f_Location)
-    {
-        $this->c_Token = $f_Token;
-        $this->c_OrgID = $f_OrgID;
+    //  ██████╗ ██████╗ ██╗██╗   ██╗ █████╗ ████████╗███████╗███████╗
+    //  ██╔══██╗██╔══██╗██║██║   ██║██╔══██╗╚══██╔══╝██╔════╝██╔════╝
+    //  ██████╔╝██████╔╝██║██║   ██║███████║   ██║   █████╗  ███████╗
+    //  ██╔═══╝ ██╔══██╗██║╚██╗ ██╔╝██╔══██║   ██║   ██╔══╝  ╚════██║
+    //  ██║     ██║  ██║██║ ╚████╔╝ ██║  ██║   ██║   ███████╗███████║
+    //  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚══════╝
 
-        $f_Locations =
-            [
-                "Paris"     => "par1",
-                "Amsterdam" => "ams1",
-            ];
-
-        $this->c_APIURL = "https://cp-" . $f_Locations[$f_Location] . ".scaleway.com";
-    }
-    // ____       _            _
-    //|  _ \ _ __(_)_   ____ _| |_ ___  ___
-    //| |_) | '__| \ \ / / _` | __/ _ \/ __|
-    //|  __/| |  | |\ V / (_| | ||  __/\__ \
-    //|_|   |_|  |_| \_/ \__,_|\__\___||___/
-    //
     //This is function used to call Scaleway API
     private function c_Call_Scaleway($f_Token, $f_HTTP_Method, $f_Endpoint, $f_GET_Data = array(), $f_POST_Data = array())
     {
@@ -125,17 +116,22 @@ class ScalewayApi
             $f_CURL_Reply = json_encode(array("message" => "CURL to Backend FAILED!"), JSON_PRETTY_PRINT);
         }
 
+        $f_Return = array(
+            "httpCode" => $f_CURL_Reply_Code,
+            "json" => $f_CURL_Reply
+        );
+
         // Logging debug data
-        $f_Debug_Data .= "HEADER: " . json_encode($f_CURL_Header, JSON_PRETTY_PRINT) . "\n\n";
-        $f_Debug_Data .= "GET: " . $this->c_APIURL . $f_Endpoint . "\n\n";
-        $f_Debug_Data .= "POST: " . $f_POST_Data . "\n\n";
-        logModuleCall('Scaleway', __FUNCTION__, $f_Debug_Data, '', json_encode(json_decode($f_CURL_Reply), JSON_PRETTY_PRINT));
+        $f_Debug_Data .= "HEADER: " . json_encode($f_CURL_Header, JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
+        $f_Debug_Data .= "URL: " . $this->c_APIURL . $f_Endpoint . PHP_EOL . PHP_EOL;
+        $f_Debug_Data .= "METHOD: " . $f_HTTP_Method . PHP_EOL . PHP_EOL;
+        $f_Debug_Data .= "METHOD DATA: " . $f_POST_Data . PHP_EOL . PHP_EOL;
+        $f_Debug_Data .= "REPLY: " . json_encode(json_decode($f_CURL_Reply), JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
+
+        logModuleCall('Scaleway', __FUNCTION__, $f_Debug_Data, print_r($f_Return, true));
 
         //Return an arry with HTTP_CODE returned and the JSON content writen by server.
-        return array(
-                        "httpCode" => $f_CURL_Reply_Code,
-                        "json" => $f_CURL_Reply
-                    );
+        return $f_Return;
     }
     
     //Server actions are: power on, power off, reboot
@@ -158,25 +154,41 @@ class ScalewayApi
         
         return $this->c_Call_Scaleway($this->c_Token, $f_HTTP_Method, $f_Endpoint, array(), $f_POST_Data);
     }
-    // ____        _     _ _
-    //|  _ \ _   _| |__ | (_) ___ ___
-    //| |_) | | | | '_ \| | |/ __/ __|
-    //|  __/| |_| | |_) | | | (__\__ \
-    //|_|    \__,_|_.__/|_|_|\___|___/
-    //
+
+
+    //  ██████╗ ██╗   ██╗██████╗ ██╗     ██╗ ██████╗███████╗
+    //  ██╔══██╗██║   ██║██╔══██╗██║     ██║██╔════╝██╔════╝
+    //  ██████╔╝██║   ██║██████╔╝██║     ██║██║     ███████╗
+    //  ██╔═══╝ ██║   ██║██╔══██╗██║     ██║██║     ╚════██║
+    //  ██║     ╚██████╔╝██████╔╝███████╗██║╚██████╗███████║
+    //  ╚═╝      ╚═════╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝╚══════╝
+
+
+    public function __construct($f_Token, $f_OrgID, $f_Location)
+    {
+        $this->c_Token = $f_Token;
+        $this->c_OrgID = $f_OrgID;
+
+        $f_Locations =
+            [
+                "Paris"     => "par1",
+                "Amsterdam" => "ams1",
+            ];
+
+        $this->c_APIURL = "https://cp-" . $f_Locations[$f_Location] . ".scaleway.com";
+    }
 
 
     //Delete a volume by it's id
-    public function delete_volume($id)
+    public function delete_volume($f_VolumeID)
     {
-        $http_method = "DELETE";
-        $f_Endpoint = "/volumes/" . $id;
-        $result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
-        return $result;
+        $f_Endpoint = "/volumes/" . $f_VolumeID;
+        $f_Result = $this->c_Call_Scaleway($this->c_Token, "DELETE", $f_Endpoint, array(), array());
+        return $f_Result;
     }
 
     //Function to instantiate a new server
-    public function create_new_server($name, $f_OS_ImageID, $f_CommercialType, $tags)
+    public function create_new_server($f_ServerName, $f_OS_ImageID, $f_CommercialType, $tags)
     {
         $http_method = "POST";
         $f_Endpoint = "/servers";
@@ -190,7 +202,7 @@ class ScalewayApi
         // Add RootFS Snapshot volume
         array_push($f_VolumesArray, [
             "base_snapshot" => $f_OS_ImageID,
-            "name" => $name . "-rootfs",
+            "name" => $f_ServerName . "-rootfs",
             "volume_type" => "l_ssd",
             "organization" => $this->c_OrgID
         ]);
@@ -211,7 +223,7 @@ class ScalewayApi
         
             $f_AdditionalVolumeArray[$f_TotalCreatedVolumeCount] =
             [
-                "name" => $name . "-extra-" . $f_TotalCreatedVolumeCount,
+                "name" => $f_ServerName . "-extra-" . $f_TotalCreatedVolumeCount,
                 "volume_type" => "l_ssd",
                 "size" => $f_NewVolumeSize,
                 "organization" => $this->c_OrgID
@@ -233,7 +245,7 @@ class ScalewayApi
         $postParams =
         [
             "organization" => $this->c_OrgID,
-            "name"         => $name,
+            "name"         => $f_ServerName,
             "commercial_type" => $f_CommercialType,
             "tags"         => $tags,
             "boot_type"  => "local",
@@ -278,10 +290,10 @@ class ScalewayApi
         $http_method = "GET";
         $f_Endpoint = "/snapshots";
         
-        $api_result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
+        $f_Return = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
 
-        logModuleCall('Scaleway', __FUNCTION__, '', '', json_encode($api_result, JSON_PRETTY_PRINT));
-        return $api_result;
+        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]', print_r($f_Return, true));
+        return $f_Return;
     }
 
 
@@ -362,56 +374,61 @@ class ScalewayApi
 
 
 
-// ____  _____ ______     _______ ____  ____     __  __    _    _   _    _    ____ _____ __  __ _____ _   _ _____
-/// ___|| ____|  _ \ \   / / ____|  _ \/ ___|   |  \/  |  / \  | \ | |  / \  / ___| ____|  \/  | ____| \ | |_   _|
-//\___ \|  _| | |_) \ \ / /|  _| | |_) \___ \   | |\/| | / _ \ |  \| | / _ \| |  _|  _| | |\/| |  _| |  \| | | |
-// ___) | |___|  _ < \ V / | |___|  _ < ___) |  | |  | |/ ___ \| |\  |/ ___ \ |_| | |___| |  | | |___| |\  | | |
-//|____/|_____|_| \_\ \_/  |_____|_| \_\____/   |_|  |_/_/   \_\_| \_/_/   \_\____|_____|_|  |_|_____|_| \_| |_|
+//  ███████╗███████╗██████╗ ██╗   ██╗███████╗██████╗     ███╗   ███╗ █████╗ ███╗   ██╗ █████╗  ██████╗ ███████╗███╗   ███╗███████╗███╗   ██╗████████╗
+//  ██╔════╝██╔════╝██╔══██╗██║   ██║██╔════╝██╔══██╗    ████╗ ████║██╔══██╗████╗  ██║██╔══██╗██╔════╝ ██╔════╝████╗ ████║██╔════╝████╗  ██║╚══██╔══╝
+//  ███████╗█████╗  ██████╔╝██║   ██║█████╗  ██████╔╝    ██╔████╔██║███████║██╔██╗ ██║███████║██║  ███╗█████╗  ██╔████╔██║█████╗  ██╔██╗ ██║   ██║
+//  ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██╔══╝  ██╔══██╗    ██║╚██╔╝██║██╔══██║██║╚██╗██║██╔══██║██║   ██║██╔══╝  ██║╚██╔╝██║██╔══╝  ██║╚██╗██║   ██║
+//  ███████║███████╗██║  ██║ ╚████╔╝ ███████╗██║  ██║    ██║ ╚═╝ ██║██║  ██║██║ ╚████║██║  ██║╚██████╔╝███████╗██║ ╚═╝ ██║███████╗██║ ╚████║   ██║
+//  ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝    ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝
+
+
 // This class is designed to work with servers as it is more easy to use than the API class.
 // If an action is not implemented in this class then you'll have to use the main class and implement by yourself.
 // It's a kind of wrapper for the main ScalewayAPI class which return JSON.
 // It will make your life easier as it already check the response for errors and returns the right message.
 class ScalewayServer
 {
-    protected $api = "";
-    protected $srvLoc = ""; 
+    protected $c_ScwAPI = "";
     public $c_ServerID = "";
-    //This store the API result. Usefull in case of error.
+    public $hostname = "";
     public $queryInfo = "";
-    public $disk_size = 0;
+
+
+    public $c_Info_Disk = 0;
+    public $c_Info_Core = 0;
+    public $c_Info_RAM = 0;
+
+
     public $creation_date = "";
+    public $modification_date = "";
     public $public_ip = array(
                 "id"      => "",
                 "address" => ""
             );
     public $private_ip = "";
-    public $modification_date = "";
-    public $hostname = "";
     public $state = "";
     public $commercial_type = "";
     public $tags = array();
-    public $name = "";
     public $security_group = "";
 
 
     public function __construct($f_Token, $f_OrgID, $f_Location)
     {
-        $this->srvLoc = $f_Location;
-        $this->api = new ScalewayApi($f_Token, $f_OrgID, $this->srvLoc);
+        $this->c_ScwAPI = new ScalewayAPI($f_Token, $f_OrgID, $f_Location);
     }
+
+
     public function setServerId($srv_id)
     {
         $this->c_ServerID = $srv_id;
     }
+
     public function retrieveDetails()
     {
-        $serverInfoResp = $this->api->retrieve_server_info($this->c_ServerID);
+        $serverInfoResp = $this->c_ScwAPI->retrieve_server_info($this->c_ServerID);
         if ($serverInfoResp["httpCode"] == 200) {
             $serverInfoResp = json_decode($serverInfoResp["json"], true);
             $serverInfoResp = $serverInfoResp["server"];
-
-
-
 
             // Remove JIFFYHOST- from panel display which is 10 first character
             $this->hostname = substr($serverInfoResp["hostname"], 10);
@@ -422,27 +439,35 @@ class ScalewayServer
             $this->security_group = $serverInfoResp["security_group"]["name"];
             $this->organization = $serverInfoResp["organization"];
 
-            $this->disk_size = $this->api->c_CommercialTypes[$this->commercial_type]["Disk"];
-            $this->creation_date = $serverInfoResp["creation_date"];
+            $this->c_Info_Disk = $this->c_ScwAPI->c_CommercialTypes[$this->commercial_type]["Disk"];
+            $this->c_Info_Core = $this->c_ScwAPI->c_CommercialTypes[$this->commercial_type]["Core"];
+            $this->c_Info_RAM = $this->c_ScwAPI->c_CommercialTypes[$this->commercial_type]["RAM"];
+
+
             $this->public_ip["id"] = $serverInfoResp["public_ip"]["id"];
             $this->public_ip["address"] = $serverInfoResp["public_ip"]["address"];
             $this->private_ip = $serverInfoResp["private_ip"];
-            $this->modification_date = $serverInfoResp["modification_date"];
+
+            $this->creation_date = prettyPrintDate($serverInfoResp["creation_date"]);
+            $this->modification_date = prettyPrintDate($serverInfoResp["modification_date"]);
 
             $this->queryInfo = "Success!";
 
-            logModuleCall('Scaleway', __FUNCTION__, '', '', json_encode($serverInfoResp, JSON_PRETTY_PRINT));
 
 
-            return true;
+            $f_Return = true;
         } else {
-            $this->queryInfo = $this->api->c_HTTPStatus[$serverInfoResp["httpCode"]];
-            return false;
+            $this->queryInfo = $this->c_ScwAPI->c_HTTPStatus[$serverInfoResp["httpCode"]];
+            $f_Return = false;
         }
+
+        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]' . PHP_EOL . PHP_EOL . "serverInfoResp:" . print_r($serverInfoResp, true), $f_Return);
+
+        return $f_Return;
     }
     public function create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags = array())
     {
-        $createServerResult = $this->api->create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags);
+        $createServerResult = $this->c_ScwAPI->create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags);
         if ($createServerResult["httpCode"] == 201) {
             $serverInfo = json_decode($createServerResult["json"], true);
             $serverInfo = $serverInfo["server"];
@@ -450,13 +475,13 @@ class ScalewayServer
             $this->retrieveDetails();
             return true;
         } else {
-            $this->queryInfo =  $this->api->c_HTTPStatus[$createServerResult["httpCode"]];
+            $this->queryInfo =  $this->c_ScwAPI->c_HTTPStatus[$createServerResult["httpCode"]];
             return false;
         }
     }
     public function delete_server()
     {
-        $deleteServerResponse = $this->api->server_terminate($this->c_ServerID);
+        $deleteServerResponse = $this->c_ScwAPI->server_terminate($this->c_ServerID);
         if ($deleteServerResponse["httpCode"] == 202) {
             return true;
         } else {
@@ -466,7 +491,7 @@ class ScalewayServer
     }
     public function poweroff_server()
     {
-        $poweroff_result = $this->api->server_poweroff($this->c_ServerID);
+        $poweroff_result = $this->c_ScwAPI->server_poweroff($this->c_ServerID);
         if ($poweroff_result["httpCode"] == 202) {
             $this->retrieveDetails();
             return true;
@@ -477,7 +502,7 @@ class ScalewayServer
     }
     public function poweron_server()
     {
-        $poweron_result = $this->api->server_poweron($this->c_ServerID);
+        $poweron_result = $this->c_ScwAPI->server_poweron($this->c_ServerID);
         if ($poweron_result["httpCode"] == 202) {
             $this->retrieveDetails();
             return true;
@@ -488,7 +513,7 @@ class ScalewayServer
     }
     public function reboot_server()
     {
-        $reboot_result = $this->api->server_reboot($this->c_ServerID);
+        $reboot_result = $this->c_ScwAPI->server_reboot($this->c_ServerID);
         if ($reboot_result["httpCode"] == 202) {
             $this->retrieveDetails();
             return true;
@@ -502,7 +527,7 @@ class ScalewayServer
     {
         $snapshot_id = "";
 
-        $json = json_decode($this->api->retrieve_snapshots()["json"]);
+        $json = json_decode($this->c_ScwAPI->retrieve_snapshots()["json"]);
         foreach ($json->snapshots as $item) {
             if ($item->name == $snapshot_name) {
                 $snapshot_id= $item->id;
@@ -510,17 +535,18 @@ class ScalewayServer
             }
         }
 
-        logModuleCall('Scaleway', __FUNCTION__, $snapshot_name, '', $snapshot_id);
+        logModuleCall('Scaleway', __FUNCTION__, $snapshot_name, $snapshot_id);
 
         return $snapshot_id;
     }
 }
 
-//
-//
-// Misc functions
-//
-//
+//  ███╗   ███╗██╗███████╗ ██████╗
+//  ████╗ ████║██║██╔════╝██╔════╝
+//  ██╔████╔██║██║███████╗██║     
+//  ██║╚██╔╝██║██║╚════██║██║     
+//  ██║ ╚═╝ ██║██║███████║╚██████╗
+//  ╚═╝     ╚═╝╚═╝╚══════╝ ╚═════╝
 
 function getAdminUserName() {
     $adminData = Capsule::table('tbladmins')
@@ -532,42 +558,40 @@ function getAdminUserName() {
         die('No admin exist. Why So?');
 }
 
+function prettyPrintDate($date) {
+    $date = date_parse($date);
+    $date = sprintf("%d/%d/%d %d:%d:%d UTC",
+    $date["year"],
+    $date["month"],
+    $date["day"],
+    $date["hour"],
+    $date["minute"],
+    $date["second"]);
+    return $date;
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-//__        ___   _ __  __  ____ ____     ____  _   _ _     _     _____
-//\ \      / / | | |  \/  |/ ___/ ___|   |  _ \| | | | |   | |   |__  /
-// \ \ /\ / /| |_| | |\/| | |   \___ \   | |_) | | | | |   | |     / /
-//  \ V  V / |  _  | |  | | |___ ___) |  |  _ <| |_| | |___| |___ / /_
-//   \_/\_/  |_| |_|_|  |_|\____|____/   |_| \_\\___/|_____|_____/____|
-//All WHMCS required functions are bellow
-//    _    ____  __  __ ___ _   _ ___ ____ _____ ____      _  _____ ___  ____
-//   / \  |  _ \|  \/  |_ _| \ | |_ _/ ___|_   _|  _ \    / \|_   _/ _ \|  _ \
-//  / _ \ | | | | |\/| || ||  \| || |\___ \ | | | |_) |  / _ \ | || | | | |_) |
-// / ___ \| |_| | |  | || || |\  || | ___) || | |  _ <  / ___ \| || |_| |  _ <
-///_/   \_\____/|_|  |_|___|_| \_|___|____/ |_| |_| \_\/_/   \_\_| \___/|_| \_\
+//  ██╗    ██╗██╗  ██╗███╗   ███╗ ██████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
+//  ██║    ██║██║  ██║████╗ ████║██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
+//  ██║ █╗ ██║███████║██╔████╔██║██║     ███████╗    █████╗  ██║   ██║██╔██╗ ██║██║        ██║   ██║██║   ██║██╔██╗ ██║███████╗
+//  ██║███╗██║██╔══██║██║╚██╔╝██║██║     ╚════██║    ██╔══╝  ██║   ██║██║╚██╗██║██║        ██║   ██║██║   ██║██║╚██╗██║╚════██║
+//  ╚███╔███╔╝██║  ██║██║ ╚═╝ ██║╚██████╗███████║    ██║     ╚██████╔╝██║ ╚████║╚██████╗   ██║   ██║╚██████╔╝██║ ╚████║███████║
+//   ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝╚══════╝    ╚═╝      ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝
 function Scaleway_MetaData()
 {
     return array(
         'DisplayName' => 'Scaleway',
         'APIVersion' => '1.1', // Use API Version 1.1
         'RequiresServer' => true, // Set true if module requires a server to work
-        'DefaultNonSSLPort' => '1111', // Default Non-SSL Connection Port
-        'DefaultSSLPort' => '1112', // Default SSL Connection Port
-        'ServiceSingleSignOnLabel' => 'Login to Panel as User',
-        'AdminSingleSignOnLabel' => 'Login to Panel as Admin',
     );
 }
+
+//   █████╗ ██████╗ ███╗   ███╗██╗███╗   ██╗
+//  ██╔══██╗██╔══██╗████╗ ████║██║████╗  ██║
+//  ███████║██║  ██║██╔████╔██║██║██╔██╗ ██║
+//  ██╔══██║██║  ██║██║╚██╔╝██║██║██║╚██╗██║
+//  ██║  ██║██████╔╝██║ ╚═╝ ██║██║██║ ╚████║
+//  ╚═╝  ╚═╝╚═════╝ ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝
+
 function Scaleway_ConfigOptions()
 {
     return array(
@@ -608,12 +632,6 @@ function Scaleway_CreateAccount(array $params)
         $f_OS_Name = $params["customfields"]["Operating System"];
         $f_Location = $params["customfields"]["Location"];
         $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         $f_OS_ImageID = $f_ScalewayServer->retrieve_snapshot_id($f_OS_Name);
         if (strlen($f_OS_ImageID) < 25) {
@@ -857,7 +875,11 @@ function Scaleway_AdminServicesTabFields(array $params)
         return array(
             'Server name' => $f_ScalewayServer->hostname,
             'Server state' => $f_ScalewayServer->state,
-            'Disk' => $f_ScalewayServer->disk_size . "GB",
+            'Disk' => $f_ScalewayServer->c_Info_Disk . "GB",
+            'Core' => $f_ScalewayServer->c_Info_Core,
+            'RAM' => $f_ScalewayServer->c_Info_RAM . "GB",
+
+
             'Image' => $params["customfields"]["Operating System"],
             'Creation date' =>$f_ScalewayServer->creation_date,
             'Modification date' => $f_ScalewayServer->modification_date,
@@ -881,11 +903,13 @@ function Scaleway_AdminServicesTabFields(array $params)
     return array();
 }
 
-//  ____ _     ___ _____ _   _ _____
-// / ___| |   |_ _| ____| \ | |_   _|
-//| |   | |    | ||  _| |  \| | | |
-//| |___| |___ | || |___| |\  | | |
-// \____|_____|___|_____|_| \_| |_|
+//   ██████╗██╗     ██╗███████╗███╗   ██╗████████╗
+//  ██╔════╝██║     ██║██╔════╝████╗  ██║╚══██╔══╝
+//  ██║     ██║     ██║█████╗  ██╔██╗ ██║   ██║
+//  ██║     ██║     ██║██╔══╝  ██║╚██╗██║   ██║
+//  ╚██████╗███████╗██║███████╗██║ ╚████║   ██║
+//   ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝
+
 function Scaleway_ClientAreaCustomButtonArray()
 {
     return array(
@@ -1000,8 +1024,10 @@ function Scaleway_ClientArea(array $params)
                 'sid' =>$f_ScalewayServer->c_ServerID,
                 'sname' => $f_ScalewayServer->hostname,
                 'sstate' => $f_ScalewayServer->state,
-                'rootvolume' => $f_ScalewayServer->disk_size . "GB",
-                'image' => $params["customfields"]["Operating System"],
+                'Core' => $f_ScalewayServer->c_Info_Core,
+                'RAM' => $f_ScalewayServer->c_Info_RAM . "GB",
+                'Disk' => $f_ScalewayServer->c_Info_Disk . "GB",
+                'OS' => $params["customfields"]["Operating System"],
                 'creationdate' =>$f_ScalewayServer->creation_date,
                 'publicipv4' => $f_ScalewayServer->public_ip["address"],
                 'privateipv4' => $f_ScalewayServer->private_ip ,

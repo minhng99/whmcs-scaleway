@@ -5,8 +5,10 @@
     <p>Server name: {$sname}</p>
     <p>Server state: <b>{$sstate}</b></p>
     <hr>
-    <p>Disk: {$rootvolume}</p>
-    <p>Image: {$image}</p>
+    <p>Core: {$Core}</p>
+    <p>RAM: {$RAM}</p>
+    <p>Disk: {$Disk}</p>
+    <p>Operating System: {$OS}</p>
     <p>Creation: {$creationdate}</p>
     <p>Modification date: {$modificationdate}</p>
     <hr>
