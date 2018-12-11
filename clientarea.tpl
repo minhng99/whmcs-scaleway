@@ -16,3 +16,4 @@
     <p>Location: {$location}</p>
     <p>Security Group: {$sec_group}</p>
 </div>
+
