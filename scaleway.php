@@ -372,41 +372,28 @@ class ScalewayApi
 class ScalewayServer
 {
     protected $api = "";
-    protected $srvLoc = "par1"; //let's set a default value.
+    protected $srvLoc = ""; 
     public $server_id = "";
     //This store the API result. Usefull in case of error.
     public $queryInfo = "";
     public $image = array(
             //There are a lot more details, we keep onle those below:
             "name"        => "",
-            "arch"        => "",
-            "id"          => "",
-            "root_volume" => array(
-                                    "size"        => "",
-                                    "id"          => "",
-                                    "volume_type" => "",
-                                    "name"        => ""
-                                )
+            "root_volume" => ""
         );
     public $creation_date = "";
     public $public_ip = array(
-                "dynamic" => false,
                 "id"      => "",
                 "address" => ""
             );
     public $private_ip = "";
-    public $dynamic_ip_required = false;
     public $modification_date = "";
     public $hostname = "";
     public $state = "";
     public $commercial_type = "";
     public $tags = array();
-    public $arch = "";
     public $name = "";
-    public $security_group = array(
-                "id"   => "",
-                "name" => ""
-            );
+    public $security_group = "";
 
 
     public function __construct($f_Token, $f_OrgID, $location)
@@ -418,26 +405,19 @@ class ScalewayServer
     {
         $this->server_id = $srv_id;
     }
+    public function setImageName($img_name)
+    {
+        $this->image["name"] = $img_name;
+    }
     public function retrieveDetails()
     {
         $serverInfoResp = $this->api->retrieve_server_info($this->server_id);
         if ($serverInfoResp["httpCode"] == 200) {
             $serverInfoResp = json_decode($serverInfoResp["json"], true);
             $serverInfoResp = $serverInfoResp["server"];
-            $this->image["name"] = $serverInfoResp["image"]["name"];
-            $this->image["arch"] = $serverInfoResp["image"]["arch"];
-            $this->image["id"] = $serverInfoResp["image"]["id"];
-            $this->image["root_volume"]["size"] = $serverInfoResp["image"]["root_volume"]["size"];
-            $this->image["root_volume"]["id"] = $serverInfoResp["image"]["root_volume"]["id"];
-            $this->image["root_volume"]["volume_type"] = $serverInfoResp["image"]["root_volume"]["volume_type"];
-            $this->image["root_volume"]["name"] = $serverInfoResp["image"]["root_volume"]["name"];
-            $this->creation_date = $serverInfoResp["creation_date"];
-            $this->public_ip["dynamic"] = $serverInfoResp["public_ip"]["dynamic"];
-            $this->public_ip["id"] = $serverInfoResp["public_ip"]["id"];
-            $this->public_ip["address"] = $serverInfoResp["public_ip"]["address"];
-            $this->private_ip = $serverInfoResp["private_ip"];
-            $this->dynamic_ip_required = $serverInfoResp["dynamic_ip_required"];
-            $this->modification_date = $serverInfoResp["modification_date"];
+
+
+
 
             // Remove JIFFYHOST- from panel display which is 10 first character
             $this->hostname = substr($serverInfoResp["hostname"], 10);
@@ -445,10 +425,18 @@ class ScalewayServer
             $this->state = $serverInfoResp["state"];
             $this->commercial_type = $serverInfoResp["commercial_type"];
             $this->tags = $serverInfoResp["tags"];
-            $this->arch = $serverInfoResp["arch"];
-            $this->security_group["id"] = $serverInfoResp["security_group"]["id"];
-            $this->security_group["name"] = $serverInfoResp["security_group"]["name"];
+            $this->security_group = $serverInfoResp["security_group"]["name"];
             $this->organization = $serverInfoResp["organization"];
+
+            $this->image["name"] = $serverInfoResp["image"]["name"];
+            $this->image["id"] = $serverInfoResp["image"]["id"];
+            $this->image["root_volume"] = $this->api->c_CommercialTypes[$this->commercial_type]["Disk"];
+            $this->creation_date = $serverInfoResp["creation_date"];
+            $this->public_ip["id"] = $serverInfoResp["public_ip"]["id"];
+            $this->public_ip["address"] = $serverInfoResp["public_ip"]["address"];
+            $this->private_ip = $serverInfoResp["private_ip"];
+            $this->modification_date = $serverInfoResp["modification_date"];
+
             $this->queryInfo = "Success!";
 
             logModuleCall('Scaleway', __FUNCTION__, '', '', json_encode($serverInfoResp));
@@ -830,6 +818,7 @@ function Scaleway_updateStats(array $params)
         $location = $params["customfields"]["Location"];
         $scwServer = new ScalewayServer($f_Token, $f_OrgID, $location);
         $scwServer->setServerId($server_id);
+        $scwServer->setImageName($params["customfields"]["Operating system"]);
         if (!$scwServer->retrieveDetails()) {
             return "Can't get server info! " . $scwServer->queryInfo;
         }
@@ -846,6 +835,7 @@ function Scaleway_updateStats(array $params)
         $values["dedicatedip"] = $scwServer->public_ip["address"];
         //$values["serviceusername"] = "administrator";
         $values["domain"] = $scwServer->hostname;
+        $values["username"] = "root";
         localAPI($command, $values, $adminuser);
     } catch (Exception $e) {
         // Record the error in WHMCS's module log.
@@ -891,18 +881,16 @@ function Scaleway_AdminServicesTabFields(array $params)
         return array(
             'Server name' => $scwServer->hostname,
             'Server state' => $scwServer->state,
-            'Root volume' => $scwServer->image["root_volume"]["name"] . " (" . $scwServer->image["root_volume"]["size"] . ") [" . $scwServer->image["root_volume"]["id"] . "] -- Type: " . $scwServer->image["root_volume"]["volume_type"],
-            'Image' => $scwServer->image["name"] . " [" . $scwServer->image["id"] . "]",
+            'Disk' => $scwServer->image["root_volume"] . "GB",
+            'Image' => $scwServer->image["name"],
             'Creation date' =>$scwServer->creation_date,
             'Modification date' => $scwServer->modification_date,
             'Public IP v4' => $scwServer->public_ip["address"] . " [" . $scwServer->public_ip["id"] . "]",
             'Private IP v4' => $scwServer->private_ip ,
-            'Dynamic IP Required' => $scwServer->dynamic_ip_required,
             'Location' => $location,
             'Commercial type' => $scwServer->commercial_type,
             'Tags' => implode(",", $scwServer->tags),
-            'Architecture' => $scwServer->arch,
-            'Security group' => $scwServer->security_group["name"] . " [" . $scwServer->security_group["id"] . "]",
+            'Security group' => $scwServer->security_group,
         );
     } catch (Exception $e) {
         // Record the error in WHMCS's module log.
@@ -925,7 +913,6 @@ function Scaleway_AdminServicesTabFields(array $params)
 function Scaleway_ClientAreaCustomButtonArray()
 {
     return array(
-        "Update stats" => "ClientUpdateStatsFunction",
         "Reboot server" => "ClientRebootServer",
         "Power OFF" => "ClientPowerOffServer",
         "Power ON" => "ClientPowerOnServer"
@@ -1037,64 +1024,14 @@ function Scaleway_ClientArea(array $params)
                 'sid' =>$scwServer->server_id,
                 'sname' => $scwServer->hostname,
                 'sstate' => $scwServer->state,
-                'rootvolume' => "Size: " . $scwServer->image["root_volume"]["size"]/1000000000 . "GB" . " Type: " . $scwServer->image["root_volume"]["volume_type"],
+                'rootvolume' => $scwServer->image["root_volume"] . "GB",
                 'image' => $scwServer->image["name"],
                 'creationdate' =>$scwServer->creation_date,
-                'publicipv4' => "Address: " . $scwServer->public_ip["address"],
-                'privateipv4' => "Address: " . $scwServer->private_ip ,
-                'dynamiciprequired' => $scwServer->dynamic_ip_required,
+                'publicipv4' => $scwServer->public_ip["address"],
+                'privateipv4' => $scwServer->private_ip ,
                 'modificationdate' => $scwServer->modification_date,
                 'location' => $location,
-                'commercialtype' => $scwServer->commercial_type,
-                'tags' => implode(",", $scwServer->tags),
-                'architecture' => $scwServer->arch,
-                'securitygroup' => "Name:" . $scwServer->security_group["name"] . " -- ID: " . $scwServer->security_group["id"],
-            ));
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        // In an error condition, display an error page.
-        return array(
-            'tabOverviewReplacementTemplate' => 'error.tpl',
-            'templateVariables' => array(
-                'usefulErrorHelper' => $e->getMessage(),
-            ));
-    }
-}
-function Scaleway_ClientUpdateStatsFunction(array $params)
-{
-    try {
-        $server_id = $params["customfields"]["Server ID"];
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $location = $params["customfields"]["Location"];
-        $scwServer = new ScalewayServer($f_Token, $f_OrgID, $location);
-        $scwServer->setServerId($server_id);
-        $scwServer->retrieveDetails();
-
-        return array(
-            'templateVariables' => array(
-                'sid' =>$scwServer->server_id,
-                'sname' => $scwServer->hostname,
-                'sstate' => $scwServer->state,
-                'rootvolume' => "Size: " . $scwServer->image["root_volume"]["size"]/1000000000 . "GB" . " Type: " . $scwServer->image["root_volume"]["volume_type"],
-                'image' => $scwServer->image["name"],
-                'creationdate' =>$scwServer->creation_date,
-                'publicipv4' => "Address: " . $scwServer->public_ip["address"],
-                'privateipv4' => "Address: " . $scwServer->private_ip ,
-                'dynamiciprequired' => $scwServer->dynamic_ip_required,
-                'modificationdate' => $scwServer->modification_date,
-                'location' => $location,
-                'commercialtype' => $scwServer->commercial_type,
-                'tags' => implode(",", $scwServer->tags),
-                'architecture' => $scwServer->arch,
-                'securitygroup' => "Name:" . $scwServer->security_group["name"] . " -- ID: " . $scwServer->security_group["id"],
+                'sec_group' => $scwServer->security_group,
             ));
     } catch (Exception $e) {
         // Record the error in WHMCS's module log.
