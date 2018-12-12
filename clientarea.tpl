@@ -9,13 +9,17 @@
     <p>RAM: {$RAM}</p>
     <p>Disk: {$Disk}</p>
     <p>Operating System: {$OS}</p>
-    <p>Creation: {$creationdate}</p>
+    <p>Creation date: {$creationdate}</p>
     <p>Modification date: {$modificationdate}</p>
     <hr>
     <p>Public IPv4: {$publicipv4}</p>
     <p>Private IPv4: {$privateipv4}</p>
+    <p>IPv6: {$ipv6}</p>
     <hr>
     <p>Location: {$location}</p>
     <p>Security Group: {$sec_group}</p>
+    <hr>
+    <p>Default Username: {$username}</p>
+    <p>Default Password: {$password}</p>
 </div>
 

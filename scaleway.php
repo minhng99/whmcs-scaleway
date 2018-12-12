@@ -78,7 +78,7 @@ class ScalewayAPI
     //  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚══════╝
 
     //This is function used to call Scaleway API
-    private function c_Call_Scaleway($f_Token, $f_HTTP_Method, $f_Endpoint, $f_GET_Data = array(), $f_POST_Data = array())
+    private function c_Call_Scaleway($f_Token, $f_HTTP_Method, $f_Endpoint, $f_GET_Data, $f_POST_Data)
     {
         if (!empty($f_GET_Data)) {
             $f_Endpoint .= '?' . http_build_query($f_GET_Data);
@@ -88,24 +88,32 @@ class ScalewayAPI
         curl_setopt($f_CURL, CURLOPT_URL, $this->c_APIURL . $f_Endpoint);
         curl_setopt($f_CURL, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
-        $f_CURL_Header =
-            [
-                "X-Auth-Token: " . $f_Token,
-                "Content-Type: application/json"
-            ];
-        curl_setopt($f_CURL, CURLOPT_HTTPHEADER, $f_CURL_Header);
-        curl_setopt($f_CURL, CURLOPT_RETURNTRANSFER, true);
+        $f_ContentType = "application/json";
      
         if ($f_HTTP_Method == 'POST') {
             $f_POST_Data=json_encode($f_POST_Data, JSON_PRETTY_PRINT);
             curl_setopt($f_CURL, CURLOPT_POST, true);
             curl_setopt($f_CURL, CURLOPT_POSTFIELDS, $f_POST_Data);
+        } elseif ($f_HTTP_Method == 'PATCH') {
+            $f_ContentType = "text/plain";
+            curl_setopt($f_CURL, CURLOPT_POST, true);
+            curl_setopt($f_CURL, CURLOPT_CUSTOMREQUEST, $f_HTTP_Method);
+            curl_setopt($f_CURL, CURLOPT_POSTFIELDS, $f_POST_Data);    
         } else {
             $f_POST_Data=http_build_query($f_POST_Data);
             curl_setopt($f_CURL, CURLOPT_POST, true);
             curl_setopt($f_CURL, CURLOPT_CUSTOMREQUEST, $f_HTTP_Method);
             curl_setopt($f_CURL, CURLOPT_POSTFIELDS, $f_POST_Data);
         }
+
+        $f_CURL_Header =
+            [
+                "X-Auth-Token: " . $f_Token,
+                "Content-Type: " . $f_ContentType
+            ];
+        curl_setopt($f_CURL, CURLOPT_HTTPHEADER, $f_CURL_Header);
+        curl_setopt($f_CURL, CURLOPT_RETURNTRANSFER, true);
+
 
         $f_CURL_Reply = curl_exec($f_CURL);
         $f_CURL_Reply_Code = curl_getinfo($f_CURL, CURLINFO_HTTP_CODE);
@@ -155,6 +163,16 @@ class ScalewayAPI
         return $this->c_Call_Scaleway($this->c_Token, $f_HTTP_Method, $f_Endpoint, array(), $f_POST_Data);
     }
 
+    // Modify Cloud-init data
+    private function c_Modify_Cloudinit($f_Data, $f_ServerID)
+    {
+        $http_method = "PATCH";
+        $f_Endpoint = "/servers/" . $f_ServerID . "/user_data/cloud-init";
+        $f_Return = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), $f_Data);
+
+        logModuleCall('Scaleway', __FUNCTION__, 'f_ServerID:' . PHP_EOL . $f_ServerID . PHP_EOL . PHP_EOL . "f_Data:" . PHP_EOL . print_r($f_Data, true) , print_r($f_Return, true));
+        return $f_Return;
+    }
 
     //  ██████╗ ██╗   ██╗██████╗ ██╗     ██╗ ██████╗███████╗
     //  ██╔══██╗██║   ██║██╔══██╗██║     ██║██╔════╝██╔════╝
@@ -188,7 +206,7 @@ class ScalewayAPI
     }
 
     //Function to instantiate a new server
-    public function create_new_server($f_ServerName, $f_OS_ImageID, $f_CommercialType, $tags)
+    public function create_new_server($f_ServerName, $f_OS_ImageID, $f_CommercialType, $tags, $f_ServerPassword)
     {
         $http_method = "POST";
         $f_Endpoint = "/servers";
@@ -242,27 +260,30 @@ class ScalewayAPI
             array_push($f_VolumesArray, $f_AdditionalVolumeArray[$i]);
         }
 
-        $postParams =
+        $f_POST_Data =
         [
             "organization" => $this->c_OrgID,
             "name"         => $f_ServerName,
             "commercial_type" => $f_CommercialType,
             "tags"         => $tags,
             "boot_type"  => "local",
+            "enable_ipv6" => true,
             "volumes"      =>  (object) $f_VolumesArray
         ];
 
 
-        $server_creation_result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), $postParams);
-        if ($server_creation_result['httpCode'] != 210) {
-            //If created more than one volumes consider removing it as server creation failed
-            if (isset($vol_id)) {
-                $this->delete_volume($vol_id);
-            }
-        }
-        //Dirty code, sorry.
+        $server_creation_result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), $f_POST_Data);
+
         $srv_id = json_decode($server_creation_result["json"], true)["server"]["id"];
+
+
+        // Set User:Pass to Cloudinit data
+        $this->c_Modify_Cloudinit($f_ServerPassword, $srv_id);
+        
+        // Power ON server
         $this->c_Server_Action("poweron", $srv_id);
+
+
         return $server_creation_result;
     }
 
@@ -297,7 +318,6 @@ class ScalewayAPI
     }
 
 
-
     //Delete an IPv4 Address
     public function delete_ip_address($ip_id)
     {
@@ -306,6 +326,8 @@ class ScalewayAPI
         $result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
         return $result;
     }
+
+
     //Delete a server by ID. This include IP and Volumes removal
     public function server_terminate($f_ServerID)
     {
@@ -317,15 +339,17 @@ class ScalewayAPI
         $serverState = (json_decode($call["json"], true)["server"]["state"]);
         $vol_id_attached = (json_decode($call["json"], true)["server"]["volumes"]["0"]["id"]);
         $ip_id_attached = (json_decode($call["json"], true)["server"]["public_ip"]["id"]);
+
         //Easy way
         if ($serverState == "running") {
             $response = $this->c_Server_Action("terminate", $f_ServerID);
             return $response;
-        } elseif ($serverState == "stopped") { //Hard wa
+        } elseif ($serverState == "stopped" || $serverState == "archived") { //Hard wa
             $http_method = "DELETE";
             $f_Endpoint = "/servers/" . $f_ServerID;
             $response = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
             if ($response["httpCode"] == 204) {
+                
                 //We have deleted the server and now we have to delete volume and IP manually
                 $delVolRes  = $this->delete_volume($vol_id_attached);
                 $delIpRes = $this->delete_ip_address($ip_id_attached);
@@ -405,6 +429,7 @@ class ScalewayServer
                 "id"      => "",
                 "address" => ""
             );
+    public $ipv6 = "";
     public $private_ip = "";
     public $state = "";
     public $commercial_type = "";
@@ -446,6 +471,7 @@ class ScalewayServer
 
             $this->public_ip["id"] = $serverInfoResp["public_ip"]["id"];
             $this->public_ip["address"] = $serverInfoResp["public_ip"]["address"];
+            $this->ipv6 = $serverInfoResp["ipv6"]["address"];
             $this->private_ip = $serverInfoResp["private_ip"];
 
             $this->creation_date = prettyPrintDate($serverInfoResp["creation_date"]);
@@ -465,9 +491,9 @@ class ScalewayServer
 
         return $f_Return;
     }
-    public function create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags = array())
+    public function create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags = array(), $f_ServerPassword)
     {
-        $createServerResult = $this->c_ScwAPI->create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags);
+        $createServerResult = $this->c_ScwAPI->create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags, $f_ServerPassword);
         if ($createServerResult["httpCode"] == 201) {
             $serverInfo = json_decode($createServerResult["json"], true);
             $serverInfo = $serverInfo["server"];
@@ -628,7 +654,6 @@ function Scaleway_CreateAccount(array $params)
 
 
         $hostname = "JIFFYHOST-" . explode(".", $params["domain"])[0];
-        $password = $params["password"];
         $f_OS_Name = $params["customfields"]["Operating System"];
         $f_Location = $params["customfields"]["Location"];
         $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
@@ -643,13 +668,22 @@ function Scaleway_CreateAccount(array $params)
         if ($f_ScalewayServer->retrieveDetails() == true) {
             return "Error! Please terminate current server then create another server again!";
         }
+
+        $f_ServerUsername = "root";
+        // For paranoid peoples: This MD5 is not actually a security risk because it's delivered from a random source anyway,
+        // we're using it to create a "softer" password which don't include special characters
+        // which could break the provisioning script on the server.
+        $f_ServerPassword = md5($params["password"]);
+
+
         //Now we have to create the new server and update Server ID field
-        if ($f_ScalewayServer->create_new_server($hostname, $f_OS_ImageID, $f_CommercialTypes, $tags)) {
+        if ($f_ScalewayServer->create_new_server($hostname, $f_OS_ImageID, $f_CommercialTypes, $tags, $f_ServerUsername . ":" . $f_ServerPassword)) {
             //If server grated, retrive his id and insert to Server ID field, so next time we know his ID.
 
             $f_LocalAPIUser = $params["configoption4"];
             $f_LocalAPI_Data["serviceid"] = $f_ServiceID;
-            $f_LocalAPI_Data["serviceusername"] = "root";
+            $f_LocalAPI_Data["serviceusername"] = $f_ServerUsername;
+            $f_LocalAPI_Data["servicepassword"] = $f_ServerPassword;
             //We only have to update server ID, the rest of field will be automaticall updated on refresh.
             $f_LocalAPI_Data["customfields"] = base64_encode(serialize(array(
                                                                     "Server ID"=> $f_ScalewayServer->c_ServerID,
@@ -674,7 +708,7 @@ function Scaleway_CreateAccount(array $params)
             $f_Log_Request .= "Location: " . $f_Location . "\n";
             //And finally server info
             $f_Log_Request .= "Hostname: " . $hostname . "\n";
-            $f_Log_Request .= "Password: " . $password . "\n";
+            $f_Log_Request .= "Password: " . $f_ServerPassword . "\n";
             $f_Log_Request .= "OS Name: " . $f_OS_Name . "\n";
             //Response
             $response = $f_ScalewayServer->queryInfo;
@@ -883,8 +917,9 @@ function Scaleway_AdminServicesTabFields(array $params)
             'Image' => $params["customfields"]["Operating System"],
             'Creation date' =>$f_ScalewayServer->creation_date,
             'Modification date' => $f_ScalewayServer->modification_date,
-            'Public IP v4' => $f_ScalewayServer->public_ip["address"] . " [" . $f_ScalewayServer->public_ip["id"] . "]",
-            'Private IP v4' => $f_ScalewayServer->private_ip ,
+            'Public IPv4' => $f_ScalewayServer->public_ip["address"] . " [" . $f_ScalewayServer->public_ip["id"] . "]",
+            'Private IPv4' => $f_ScalewayServer->private_ip,
+            'IPv6' => $f_ScalewayServer->ipv6,
             'Location' => $f_Location,
             'Commercial type' => $f_ScalewayServer->commercial_type,
             'Tags' => implode(",", $f_ScalewayServer->tags),
@@ -1030,10 +1065,13 @@ function Scaleway_ClientArea(array $params)
                 'OS' => $params["customfields"]["Operating System"],
                 'creationdate' =>$f_ScalewayServer->creation_date,
                 'publicipv4' => $f_ScalewayServer->public_ip["address"],
-                'privateipv4' => $f_ScalewayServer->private_ip ,
+                'privateipv4' => $f_ScalewayServer->private_ip,
+                'ipv6' => $f_ScalewayServer->ipv6,
                 'modificationdate' => $f_ScalewayServer->modification_date,
                 'location' => $f_Location,
                 'sec_group' => $f_ScalewayServer->security_group,
+                'username' => $params["username"],
+                'password' => $params["password"],
             ));
     } catch (Exception $e) {
         // Record the error in WHMCS's module log.
