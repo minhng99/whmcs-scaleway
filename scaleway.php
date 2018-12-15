@@ -20,28 +20,26 @@ use WHMCS\Database\Capsule;
 
 class ScalewayAPI
 {
-    private $c_Token = "";
-    private $c_OrgID = "";
-    private $c_APIURL = "";
+    private $Token = "";
+    private $OrgID = "";
+    private $APIURL = "";
 
     // Status codes returned by scaleway
-    public $c_HTTPStatus =
+    public $HTTPStatus =
         [
-            "200" => "Scaleway API - 200: OK.",
-            "201" => "Scaleway API - 201: Created.",
-            "204" => "Scaleway API - 204: No Content.",
-            "400" => "Scaleway API - 400: Bad Request - Missing or invalid parameter.",
-            "401" => "Scaleway API - 401: Auth Error - Invalid Token/Organization_ID.",
-            "402" => "Scaleway API - 402: Request Failed - Parameters were valid but request failed.",
-            "403" => "Scaleway API - 403: Forbidden - Access to resource is prohibited.",
-            "404" => "Scaleway API - 404: Not found - API Failed or object does not exist.",
-            "50x" => "Scaleway API - 50x: Backend on fire.",
-            //Custom
-            "123" => "Error 123: means new volume creation failed. This error appear when try to allocate new volume for the new server!"
+            "200" => "Backend - 200: OK.",
+            "201" => "Backend - 201: Created.",
+            "204" => "Backend - 204: No Content.",
+            "400" => "Backend - 400: Bad Request - Missing or invalid parameter.",
+            "401" => "Backend - 401: Auth Error - Invalid Token/Organization_ID.",
+            "402" => "Backend - 402: Request Failed - Parameters were valid but request failed.",
+            "403" => "Backend - 403: Forbidden - Access to resource is prohibited.",
+            "404" => "Backend - 404: Not found - API Failed or object does not exist.",
+            "50x" => "Backend - 50x: Backend on fire."
         ];
         
 
-    public $c_CommercialTypes =
+    public $CommercialTypes =
         [
             "START1-XS" => 
                 [
@@ -78,101 +76,61 @@ class ScalewayAPI
     //  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚══════╝
 
     //This is function used to call Scaleway API
-    private function c_Call_Scaleway($f_Token, $f_HTTP_Method, $f_Endpoint, $f_GET_Data, $f_POST_Data)
+    private function Call_Scaleway($Token, $HTTP_Method, $Endpoint, $POST_Data = "", $POST_Content_Type = "")
     {
-        if (!empty($f_GET_Data)) {
-            $f_Endpoint .= '?' . http_build_query($f_GET_Data);
+        if($POST_Content_Type != "")
+        {
+            $POST_Content_Type = "Content-Type: " . $POST_Content_Type;
+
         }
 
-        $f_CURL = curl_init();
-        curl_setopt($f_CURL, CURLOPT_URL, $this->c_APIURL . $f_Endpoint);
-        curl_setopt($f_CURL, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
-        $f_ContentType = "application/json";
-     
-        if ($f_HTTP_Method == 'POST') {
-            $f_POST_Data=json_encode($f_POST_Data, JSON_PRETTY_PRINT);
-            curl_setopt($f_CURL, CURLOPT_POST, true);
-            curl_setopt($f_CURL, CURLOPT_POSTFIELDS, $f_POST_Data);
-        } elseif ($f_HTTP_Method == 'PATCH') {
-            $f_ContentType = "text/plain";
-            curl_setopt($f_CURL, CURLOPT_POST, true);
-            curl_setopt($f_CURL, CURLOPT_CUSTOMREQUEST, $f_HTTP_Method);
-            curl_setopt($f_CURL, CURLOPT_POSTFIELDS, $f_POST_Data);    
-        } else {
-            $f_POST_Data=http_build_query($f_POST_Data);
-            curl_setopt($f_CURL, CURLOPT_POST, true);
-            curl_setopt($f_CURL, CURLOPT_CUSTOMREQUEST, $f_HTTP_Method);
-            curl_setopt($f_CURL, CURLOPT_POSTFIELDS, $f_POST_Data);
-        }
+        $CURL = curl_init();
+        curl_setopt($CURL, CURLOPT_URL, $this->APIURL . $Endpoint);
+        curl_setopt($CURL, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
-        $f_CURL_Header =
+        curl_setopt($CURL, CURLOPT_POST, true);
+        curl_setopt($CURL, CURLOPT_CUSTOMREQUEST, $HTTP_Method);
+        curl_setopt($CURL, CURLOPT_POSTFIELDS, $POST_Data);
+        
+
+        $CURL_Header =
             [
-                "X-Auth-Token: " . $f_Token,
-                "Content-Type: " . $f_ContentType
+                "X-Auth-Token: " . $Token,
+                $POST_Content_Type
             ];
-        curl_setopt($f_CURL, CURLOPT_HTTPHEADER, $f_CURL_Header);
-        curl_setopt($f_CURL, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($CURL, CURLOPT_HTTPHEADER, $CURL_Header);
+        curl_setopt($CURL, CURLOPT_RETURNTRANSFER, true);
 
 
-        $f_CURL_Reply = curl_exec($f_CURL);
-        $f_CURL_Reply_Code = curl_getinfo($f_CURL, CURLINFO_HTTP_CODE);
+        $CURL_Reply = curl_exec($CURL);
+        $CURL_Reply_Code = curl_getinfo($CURL, CURLINFO_HTTP_CODE);
 
-        curl_close($f_CURL);
+        curl_close($CURL);
 
-        if ($f_CURL_Reply_Code == "") {
-            $f_CURL_Reply = json_encode(array("message" => "CURL to Backend FAILED!"), JSON_PRETTY_PRINT);
+        if ($CURL_Reply_Code == "") {
+            $CURL_Reply = json_encode(array("message" => "CURL to Backend FAILED!"), JSON_PRETTY_PRINT);
         }
 
-        $f_Return = array(
-            "httpCode" => $f_CURL_Reply_Code,
-            "json" => $f_CURL_Reply
+        $Return = array(
+            "STATUS" => $CURL_Reply_Code,
+            "json" => $CURL_Reply
         );
 
         // Logging debug data
-        $f_Debug_Data .= "HEADER: " . json_encode($f_CURL_Header, JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
-        $f_Debug_Data .= "URL: " . $this->c_APIURL . $f_Endpoint . PHP_EOL . PHP_EOL;
-        $f_Debug_Data .= "METHOD: " . $f_HTTP_Method . PHP_EOL . PHP_EOL;
-        $f_Debug_Data .= "METHOD DATA: " . $f_POST_Data . PHP_EOL . PHP_EOL;
-        $f_Debug_Data .= "REPLY: " . json_encode(json_decode($f_CURL_Reply), JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
+        $Debug_Data .= "HEADER: " . json_encode($CURL_Header, JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
+        $Debug_Data .= "URL: " . $this->APIURL . $Endpoint . PHP_EOL . PHP_EOL;
+        $Debug_Data .= "METHOD: " . $HTTP_Method . PHP_EOL . PHP_EOL;
+        $Debug_Data .= "METHOD DATA: " . $POST_Data . PHP_EOL . PHP_EOL;
+        $Debug_Data .= "REPLY: " . json_encode(json_decode($CURL_Reply), JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
 
-        logModuleCall('Scaleway', __FUNCTION__, $f_Debug_Data, print_r($f_Return, true));
+        logModuleCall('Scaleway', __FUNCTION__, $Debug_Data, print_r($Return, true));
 
         //Return an arry with HTTP_CODE returned and the JSON content writen by server.
-        return $f_Return;
+        return $Return;
     }
     
-    //Server actions are: power on, power off, reboot
-    private function c_Server_Action($f_Action, $f_ServerID)
-    {
-        if ($f_Action != "poweron" && $f_Action != "poweroff" && $f_Action != "reboot" && $f_Action != "terminate") {
-            return array(
-                    "httpCode" => "400",
-                    "json" => "{\"error\" : \"Invalid f_Action\"}"
-                );
-        }
 
-
-        $f_HTTP_Method = "POST";
-        $f_Endpoint = "/servers/" . $f_ServerID . "/action";
-        $f_POST_Data =
-            [
-                "action" => $f_Action
-            ];
-        
-        return $this->c_Call_Scaleway($this->c_Token, $f_HTTP_Method, $f_Endpoint, array(), $f_POST_Data);
-    }
-
-    // Modify Cloud-init data
-    private function c_Modify_Cloudinit($f_Data, $f_ServerID)
-    {
-        $http_method = "PATCH";
-        $f_Endpoint = "/servers/" . $f_ServerID . "/user_data/cloud-init";
-        $f_Return = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), $f_Data);
-
-        logModuleCall('Scaleway', __FUNCTION__, 'f_ServerID:' . PHP_EOL . $f_ServerID . PHP_EOL . PHP_EOL . "f_Data:" . PHP_EOL . print_r($f_Data, true) , print_r($f_Return, true));
-        return $f_Return;
-    }
 
     //  ██████╗ ██╗   ██╗██████╗ ██╗     ██╗ ██████╗███████╗
     //  ██╔══██╗██║   ██║██╔══██╗██║     ██║██╔════╝██╔════╝
@@ -182,106 +140,117 @@ class ScalewayAPI
     //  ╚═╝      ╚═════╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝╚══════╝
 
 
-    public function __construct($f_Token, $f_OrgID, $f_Location)
+    public function __construct($Token, $OrgID, $Location)
     {
-        $this->c_Token = $f_Token;
-        $this->c_OrgID = $f_OrgID;
+        $this->Token = $Token;
+        $this->OrgID = $OrgID;
 
-        $f_Locations =
+        $Locations =
             [
                 "Paris"     => "par1",
                 "Amsterdam" => "ams1",
             ];
 
-        $this->c_APIURL = "https://cp-" . $f_Locations[$f_Location] . ".scaleway.com";
+        $this->APIURL = "https://cp-" . $Locations[$Location] . ".scaleway.com";
     }
 
 
-    //Delete a volume by it's id
-    public function delete_volume($f_VolumeID)
+    // Modify Cloud-init data
+    private function Modify_Cloudinit($Data, $ServerID)
     {
-        $f_Endpoint = "/volumes/" . $f_VolumeID;
-        $f_Result = $this->c_Call_Scaleway($this->c_Token, "DELETE", $f_Endpoint, array(), array());
-        return $f_Result;
+        $http_method = "PATCH";
+        $Endpoint = "/servers/" . $ServerID . "/user_data/cloud-init";
+        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, $Data, "text/plain");
+
+        logModuleCall('Scaleway', __FUNCTION__, 'ServerID:' . PHP_EOL . $ServerID . PHP_EOL . PHP_EOL . "Data:" . PHP_EOL . print_r($Data, true) , print_r($Return, true));
+        return $Return;
+    }
+
+    //Delete a volume by it's id
+    public function delete_volume($VolumeID)
+    {
+        $Endpoint = "/volumes/" . $VolumeID;
+        $Result = $this->Call_Scaleway($this->Token, "DELETE", $Endpoint);
+        return $Result;
     }
 
     //Function to instantiate a new server
-    public function create_new_server($f_ServerName, $f_OS_ImageID, $f_CommercialType, $tags, $f_ServerPassword)
+    public function create_new_server($ServerName, $OS_ImageID, $CommercialType, $tags, $ServerPassword)
     {
         $http_method = "POST";
-        $f_Endpoint = "/servers";
+        $Endpoint = "/servers";
 
         // GB to Bytes and substitute the rootfs Snapshot size (25GB)
-        $f_ExtraVolumeSizes = ($this->c_CommercialTypes[$f_CommercialType]["Disk"] * 1000000000) - 25000000000;
+        $ExtraVolumeSizes = ($this->CommercialTypes[$CommercialType]["Disk"] * 1000000000) - 25000000000;
 
         // Initilize empty Volume array
-        $f_VolumesArray = array();
+        $VolumesArray = array();
 
         // Add RootFS Snapshot volume
-        array_push($f_VolumesArray, [
-            "base_snapshot" => $f_OS_ImageID,
-            "name" => $f_ServerName . "-rootfs",
+        array_push($VolumesArray, [
+            "base_snapshot" => $OS_ImageID,
+            "name" => $ServerName . "-rootfs",
             "volume_type" => "l_ssd",
-            "organization" => $this->c_OrgID
+            "organization" => $this->OrgID
         ]);
         
         // Scaleway don't allow a single volume to have over 150GB, this will be an issue with START1-L
-        $f_MaxAllowedSize = 150000000000;
-        $f_TotalCreatedVolumeCount = 0;
+        $MaxAllowedSize = 150000000000;
+        $TotalCreatedVolumeCount = 0;
         
-        // Create f_AdditionalVolumeArray contain an array of volumes depend on required maximum size
-        while ($f_ExtraVolumeSizes) {
-            if ($f_ExtraVolumeSizes > $f_MaxAllowedSize) {
+        // Create AdditionalVolumeArray contain an array of volumes depend on required maximum size
+        while ($ExtraVolumeSizes) {
+            if ($ExtraVolumeSizes > $MaxAllowedSize) {
                 // Force create a volume 150GB
-                $f_NewVolumeSize = $f_MaxAllowedSize;
+                $NewVolumeSize = $MaxAllowedSize;
             } else {
                 // Proceed to create the required volume size
-                $f_NewVolumeSize = $f_ExtraVolumeSizes;
+                $NewVolumeSize = $ExtraVolumeSizes;
             }
         
-            $f_AdditionalVolumeArray[$f_TotalCreatedVolumeCount] =
+            $AdditionalVolumeArray[$TotalCreatedVolumeCount] =
             [
-                "name" => $f_ServerName . "-extra-" . $f_TotalCreatedVolumeCount,
+                "name" => $ServerName . "-extra-" . $TotalCreatedVolumeCount,
                 "volume_type" => "l_ssd",
-                "size" => $f_NewVolumeSize,
-                "organization" => $this->c_OrgID
+                "size" => $NewVolumeSize,
+                "organization" => $this->OrgID
             ];
 
             // Count how many volumes has been created
-            $f_TotalCreatedVolumeCount++;
+            $TotalCreatedVolumeCount++;
 
             // Substitute the Volume has created
-            $f_ExtraVolumeSizes = $f_ExtraVolumeSizes - $f_NewVolumeSize;
+            $ExtraVolumeSizes = $ExtraVolumeSizes - $NewVolumeSize;
         }
 
-        // Push each created volumes into f_VolumesArrayObj
-        for ($i = 0; $i < $f_TotalCreatedVolumeCount; $i++)
+        // Push each created volumes into VolumesArrayObj
+        for ($i = 0; $i < $TotalCreatedVolumeCount; $i++)
         {
-            array_push($f_VolumesArray, $f_AdditionalVolumeArray[$i]);
+            array_push($VolumesArray, $AdditionalVolumeArray[$i]);
         }
 
-        $f_POST_Data =
+        $POST_Data =
         [
-            "organization" => $this->c_OrgID,
-            "name"         => $f_ServerName,
-            "commercial_type" => $f_CommercialType,
+            "organization" => $this->OrgID,
+            "name"         => $ServerName,
+            "commercial_type" => $CommercialType,
             "tags"         => $tags,
             "boot_type"  => "local",
             "enable_ipv6" => true,
-            "volumes"      =>  (object) $f_VolumesArray
+            "volumes"      =>  (object) $VolumesArray
         ];
 
 
-        $server_creation_result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), $f_POST_Data);
+        $server_creation_result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($POST_Data, JSON_PRETTY_PRINT), "application/json");
 
         $srv_id = json_decode($server_creation_result["json"], true)["server"]["id"];
 
 
         // Set User:Pass to Cloudinit data
-        $this->c_Modify_Cloudinit($f_ServerPassword, $srv_id);
+        $this->Modify_Cloudinit($ServerPassword, $srv_id);
         
         // Power ON server
-        $this->c_Server_Action("poweron", $srv_id);
+        $this->server_action($srv_id, "poweron" );
 
 
         return $server_creation_result;
@@ -291,105 +260,53 @@ class ScalewayAPI
 
 
     //Function which return server info
-    public function retrieve_server_info($f_ServerID)
+    public function retrieve_server_info($ServerID)
     {
         // Return Error when ServerID is invalid.
-        if ($f_ServerID == "" || strpos($f_ServerID, "TERMINATED") !== false) {
+        if ($ServerID == "" || strpos($ServerID, "TERMINATED") !== false) {
             return array(
-                "httpCode" => "400",
+                "STATUS" => "400",
                 "json" => "{\"error\" : \"Invalid ServerID\"}"
             );
         }
         $http_method = "GET";
-        $f_Endpoint = "/servers/" . $f_ServerID;
-        $result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
+        $Endpoint = "/servers/" . $ServerID;
+        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
         return $result;
     }
 
     public function retrieve_snapshots()
     {
         $http_method = "GET";
-        $f_Endpoint = "/snapshots";
+        $Endpoint = "/snapshots";
         
-        $f_Return = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
+        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
 
-        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]', print_r($f_Return, true));
-        return $f_Return;
+        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]', print_r($Return, true));
+        return $Return;
     }
 
 
-    //Delete an IPv4 Address
-    public function delete_ip_address($ip_id)
+
+    //Server actions are: power on, stop_in_place, reboot
+    public function server_action( $ServerID, $Action)
     {
-        $http_method = "DELETE";
-        $f_Endpoint = "/ips/" . $ip_id;
-        $result = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
-        return $result;
-    }
-
-
-    //Delete a server by ID. This include IP and Volumes removal
-    public function server_terminate($f_ServerID)
-    {
-        //Retrieve volume id and server state
-        $call = $this->retrieve_server_info($f_ServerID);
-        if ($call["httpCode"] != 200) {
-            return $call;
-        }
-        $serverState = (json_decode($call["json"], true)["server"]["state"]);
-        $vol_id_attached = (json_decode($call["json"], true)["server"]["volumes"]["0"]["id"]);
-        $ip_id_attached = (json_decode($call["json"], true)["server"]["public_ip"]["id"]);
-
-        //Easy way
-        if ($serverState == "running") {
-            $response = $this->c_Server_Action("terminate", $f_ServerID);
-            return $response;
-        } elseif ($serverState == "stopped" || $serverState == "archived") { //Hard wa
-            $http_method = "DELETE";
-            $f_Endpoint = "/servers/" . $f_ServerID;
-            $response = $this->c_Call_Scaleway($this->c_Token, $http_method, $f_Endpoint, array(), array());
-            if ($response["httpCode"] == 204) {
-                
-                //We have deleted the server and now we have to delete volume and IP manually
-                $delVolRes  = $this->delete_volume($vol_id_attached);
-                $delIpRes = $this->delete_ip_address($ip_id_attached);
-                if ($delVolRes["httpCode"] == 204) {
-                    if ($delIpRes["httpCode"] == 204) {
-                        return $response;
-                    } else {
-                        return $delIpRes;
-                    }
-                } else {
-                    return $delVolRes;
-                }
-            }
-            return $response;
-        } else {
-            //Server may be booting or pending for an action. In this case we have to try after server get into a valid state
+        if ($Action != "poweron" && $Action != "stop_in_place" && $Action != "reboot" && $Action != "terminate") {
             return array(
-                            "httpCode" => "400",
-                            "json" => json_encode(array("message" => "Server is into an intermediate state! Wait for power on/off then try again!"), JSON_PRETTY_PRINT)
-                         );
+                    "STATUS" => "400",
+                    "json" => "{\"error\" : \"Invalid Action\"}"
+                );
         }
-    }
-    //Function used to suspend the server
-    public function server_poweroff($f_ServerID)
-    {
-        //Suspension mean power off and storing volume offline
-        $result = $this->c_Server_Action("poweroff", $f_ServerID);
-        return $result;
-    }
-    //Function to hard reboot the server
-    public function server_reboot($f_ServerID)
-    {
-        $result = $this->c_Server_Action("reboot", $f_ServerID);
-        return $result;
-    }
-    //Function to power on an server
-    public function server_poweron($f_ServerID)
-    {
-        $result = $this->c_Server_Action("poweron", $f_ServerID);
-        return $result;
+
+
+        $HTTP_Method = "POST";
+        $Endpoint = "/servers/" . $ServerID . "/action";
+        $POST_Data =
+            [
+                "action" => $Action
+            ];
+        
+        return $this->Call_Scaleway($this->Token, $HTTP_Method, $Endpoint, json_encode($POST_Data, JSON_PRETTY_PRINT), "application/json" );
     }
 }
 
@@ -412,15 +329,19 @@ class ScalewayAPI
 // It will make your life easier as it already check the response for errors and returns the right message.
 class ScalewayServer
 {
-    protected $c_ScwAPI = "";
-    public $c_ServerID = "";
+    protected $ScwAPI = "";
+
+    public $ServerPrefix =  "CUSTOMER-";
+
+    public $ServerID = "";
     public $hostname = "";
     public $queryInfo = "";
 
 
-    public $c_Info_Disk = 0;
-    public $c_Info_Core = 0;
-    public $c_Info_RAM = 0;
+
+    public $Info_Disk = 0;
+    public $Info_Core = 0;
+    public $Info_RAM = 0;
 
 
     public $creation_date = "";
@@ -437,36 +358,47 @@ class ScalewayServer
     public $security_group = "";
 
 
-    public function __construct($f_Token, $f_OrgID, $f_Location)
+    public function __construct($Token, $OrgID, $Location)
     {
-        $this->c_ScwAPI = new ScalewayAPI($f_Token, $f_OrgID, $f_Location);
+        $this->ScwAPI = new ScalewayAPI($Token, $OrgID, $Location);
     }
 
 
     public function setServerId($srv_id)
     {
-        $this->c_ServerID = $srv_id;
+        $this->ServerID = $srv_id;
     }
 
     public function retrieveDetails()
     {
-        $serverInfoResp = $this->c_ScwAPI->retrieve_server_info($this->c_ServerID);
-        if ($serverInfoResp["httpCode"] == 200) {
+        $serverInfoResp = $this->ScwAPI->retrieve_server_info($this->ServerID);
+        if ($serverInfoResp["STATUS"] == 200) {
             $serverInfoResp = json_decode($serverInfoResp["json"], true);
             $serverInfoResp = $serverInfoResp["server"];
 
-            // Remove JIFFYHOST- from panel display which is 10 first character
-            $this->hostname = substr($serverInfoResp["hostname"], 10);
+            // Remove ServerPrefix from name
+            $this->hostname = substr($serverInfoResp["hostname"], strlen($this->ServerPrefix));
+
+            if ($serverInfoResp["state"] == "stopped in place") {
+                $this->state = "<font color=\"red\">NOT RUNNING</font>";
+            } elseif ($serverInfoResp["state"] == "stopping") {
+                $this->state = "<font color=\"orange\">SHUTTING DOWN</font>";
+            } elseif ($serverInfoResp["state"] == "running") {
+                $this->state = "<font color=\"green\">RUNNING</font>";
+            } elseif ($serverInfoResp["state"] == "starting") {
+                $this->state = "<font color=\"blue\">STARTING</font>";
+            } else {
+                $this->state = $serverInfoResp["state"];
+            }
             
-            $this->state = $serverInfoResp["state"];
             $this->commercial_type = $serverInfoResp["commercial_type"];
             $this->tags = $serverInfoResp["tags"];
             $this->security_group = $serverInfoResp["security_group"]["name"];
             $this->organization = $serverInfoResp["organization"];
 
-            $this->c_Info_Disk = $this->c_ScwAPI->c_CommercialTypes[$this->commercial_type]["Disk"];
-            $this->c_Info_Core = $this->c_ScwAPI->c_CommercialTypes[$this->commercial_type]["Core"];
-            $this->c_Info_RAM = $this->c_ScwAPI->c_CommercialTypes[$this->commercial_type]["RAM"];
+            $this->Info_Disk = $this->ScwAPI->CommercialTypes[$this->commercial_type]["Disk"];
+            $this->Info_Core = $this->ScwAPI->CommercialTypes[$this->commercial_type]["Core"];
+            $this->Info_RAM = $this->ScwAPI->CommercialTypes[$this->commercial_type]["RAM"];
 
 
             $this->public_ip["id"] = $serverInfoResp["public_ip"]["id"];
@@ -481,55 +413,55 @@ class ScalewayServer
 
 
 
-            $f_Return = true;
+            $Return = true;
         } else {
-            $this->queryInfo = $this->c_ScwAPI->c_HTTPStatus[$serverInfoResp["httpCode"]];
-            $f_Return = false;
+            $this->queryInfo = $this->ScwAPI->HTTPStatus[$serverInfoResp["STATUS"]];
+            $Return = false;
         }
 
-        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]' . PHP_EOL . PHP_EOL . "serverInfoResp:" . print_r($serverInfoResp, true), $f_Return);
+        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]' . PHP_EOL . PHP_EOL . "serverInfoResp:" . print_r($serverInfoResp, true), $Return);
 
-        return $f_Return;
+        return $Return;
     }
-    public function create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags = array(), $f_ServerPassword)
+    public function create_new_server($Server_Name, $OS_ImageID, $commercial_type, $tags = array(), $ServerPassword)
     {
-        $createServerResult = $this->c_ScwAPI->create_new_server($f_Server_Name, $f_OS_ImageID, $commercial_type, $tags, $f_ServerPassword);
-        if ($createServerResult["httpCode"] == 201) {
+        $createServerResult = $this->ScwAPI->create_new_server( $this->ServerPrefix . $Server_Name, $OS_ImageID, $commercial_type, $tags, $ServerPassword);
+        if ($createServerResult["STATUS"] == 201) {
             $serverInfo = json_decode($createServerResult["json"], true);
             $serverInfo = $serverInfo["server"];
-            $this->c_ServerID = $serverInfo["id"];
+            $this->ServerID = $serverInfo["id"];
             $this->retrieveDetails();
             return true;
         } else {
-            $this->queryInfo =  $this->c_ScwAPI->c_HTTPStatus[$createServerResult["httpCode"]];
+            $this->queryInfo =  $this->ScwAPI->HTTPStatus[$createServerResult["STATUS"]];
             return false;
         }
     }
     public function delete_server()
     {
-        $deleteServerResponse = $this->c_ScwAPI->server_terminate($this->c_ServerID);
-        if ($deleteServerResponse["httpCode"] == 202) {
+        $deleteServerResponse = $this->ScwAPI->server_action($this->ServerID, "terminate");
+        if ($deleteServerResponse["STATUS"] == 202) {
             return true;
         } else {
             $this->queryInfo = json_decode($deleteServerResponse["json"], true)["message"];
             return false;
         }
     }
-    public function poweroff_server()
+    public function stop_server()
     {
-        $poweroff_result = $this->c_ScwAPI->server_poweroff($this->c_ServerID);
-        if ($poweroff_result["httpCode"] == 202) {
+        $powerofresult = $this->ScwAPI->server_action($this->ServerID, "stop_in_place");
+        if ($powerofresult["STATUS"] == 202) {
             $this->retrieveDetails();
             return true;
         } else {
-            $this->queryInfo = json_decode($poweroff_result["json"], true)["message"];
+            $this->queryInfo = json_decode($powerofresult["json"], true)["message"];
             return false;
         }
     }
     public function poweron_server()
     {
-        $poweron_result = $this->c_ScwAPI->server_poweron($this->c_ServerID);
-        if ($poweron_result["httpCode"] == 202) {
+        $poweron_result = $this->ScwAPI->server_action($this->ServerID, "poweron");
+        if ($poweron_result["STATUS"] == 202) {
             $this->retrieveDetails();
             return true;
         } else {
@@ -539,8 +471,8 @@ class ScalewayServer
     }
     public function reboot_server()
     {
-        $reboot_result = $this->c_ScwAPI->server_reboot($this->c_ServerID);
-        if ($reboot_result["httpCode"] == 202) {
+        $reboot_result = $this->ScwAPI->server_action($this->ServerID, "reboot");
+        if ($reboot_result["STATUS"] == 202) {
             $this->retrieveDetails();
             return true;
         } else {
@@ -553,7 +485,7 @@ class ScalewayServer
     {
         $snapshot_id = "";
 
-        $json = json_decode($this->c_ScwAPI->retrieve_snapshots()["json"]);
+        $json = json_decode($this->ScwAPI->retrieve_snapshots()["json"]);
         foreach ($json->snapshots as $item) {
             if ($item->name == $snapshot_name) {
                 $snapshot_id= $item->id;
@@ -643,300 +575,386 @@ function Scaleway_ConfigOptions()
 }
 function Scaleway_CreateAccount(array $params)
 {
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_CommercialTypes = $params["configoption3"];
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $Location = $params["customfields"]["Location"];
 
-        $f_ClientID = $params["model"]["client"]["id"];
-        $f_OrderID = $params["model"]["orderid"];
-        $f_ServiceID = $params["serviceid"];
+    $CommercialType = $params["configoption3"];
+    $ServerName = $params["domain"];
 
+    $ClientID = $params["model"]["client"]["id"];
+    $OrderID = $params["model"]["orderid"];
+    $ServiceID = $params["serviceid"];
+    
+    $OSName = $params["customfields"]["Operating System"];
 
-        $hostname = "JIFFYHOST-" . explode(".", $params["domain"])[0];
-        $f_OS_Name = $params["customfields"]["Operating System"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "CommercialType: " . $CommercialType . PHP_EOL . 
+                  "ServerName: " . $ServerName . PHP_EOL .
+                  "ClientID: " . $ClientID . PHP_EOL . 
+                  "OrderID: " . $OrderID . PHP_EOL . 
+                  "ServiceID: " . $ServiceID . PHP_EOL . 
+                  "OSName: " . $OSName . PHP_EOL .  PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
 
-        $f_OS_ImageID = $f_ScalewayServer->retrieve_snapshot_id($f_OS_Name);
-        if (strlen($f_OS_ImageID) < 25) {
-            return "Invalid image " . $f_OS_Name;
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && $Location != "" && $CommercialType != "" && $ServerName != "" &&
+        $ClientID != "" && $OrderID != "" && $ServiceID != "" && $OSName != "") {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+
+        $OSImageID = $ScalewayServer->retrieve_snapshot_id($OS_Name);
+        if (strlen($OSImageID) != 36) {
+            $Return =  "Invalid image: " . $OS_Name;
+            goto Abort;
         }
 
-        $tags = array("ClientID: " . $f_ClientID, "OrderID: " . $f_OrderID, "ServiceID: " . $f_ServiceID);
-        //Check if the current server were terminated
-        if ($f_ScalewayServer->retrieveDetails() == true) {
-            return "Error! Please terminate current server then create another server again!";
-        }
+        $ServerTag = array("ClientID: " . $ClientID, "OrderID: " . $OrderID, "ServiceID: " . $ServiceID);
 
-        $f_ServerUsername = "root";
-        // For paranoid peoples: This MD5 is not actually a security risk because it's delivered from a random source anyway,
-        // we're using it to create a "softer" password which don't include special characters
-        // which could break the provisioning script on the server.
-        $f_ServerPassword = md5($params["password"]);
+        $ServerUsername = "root";
+        $ServerPassword = md5($params["password"]);
 
+        if ($ScalewayServer->create_new_server($ServerName, $OSImageID, $CommercialType, $ServerTag, $ServerUsername . ":" . $ServerPassword)) {
 
-        //Now we have to create the new server and update Server ID field
-        if ($f_ScalewayServer->create_new_server($hostname, $f_OS_ImageID, $f_CommercialTypes, $tags, $f_ServerUsername . ":" . $f_ServerPassword)) {
-            //If server grated, retrive his id and insert to Server ID field, so next time we know his ID.
-
-            $f_LocalAPIUser = $params["configoption4"];
-            $f_LocalAPI_Data["serviceid"] = $f_ServiceID;
-            $f_LocalAPI_Data["serviceusername"] = $f_ServerUsername;
-            $f_LocalAPI_Data["servicepassword"] = $f_ServerPassword;
-            //We only have to update server ID, the rest of field will be automaticall updated on refresh.
-            $f_LocalAPI_Data["customfields"] = base64_encode(serialize(array(
-                                                                    "Server ID"=> $f_ScalewayServer->c_ServerID,
-                                                                    "Operating System" => $f_OS_Name
+            $LocalAPI_Data["serviceid"] = $ServiceID;
+            $LocalAPI_Data["serviceusername"] = $ServerUsername;
+            $LocalAPI_Data["servicepassword"] = $ServerPassword;
+            $LocalAPI_Data["customfields"] = base64_encode(serialize(array(
+                                                                    "Server ID"=> $ScalewayServer->ServerID,
+                                                                    "Operating System" => $OS_Name
                                                                     )));
 
+            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
 
-            localAPI("UpdateClientProduct", $f_LocalAPI_Data, getAdminUserName());
+            $Return = "success";
         } else {
-
-            //
-            // REQUEST LOGGING
-            //
-
-            //User and service info
-            $f_Log_Request .= "ClientID: " . $f_ClientID . "\n";
-            $f_Log_Request .= "OrderID: " . $f_OrderID . "\n";
-            $f_Log_Request .= "Service ID: " . $f_ServiceID . "\n";
-            $f_Log_Request .= "Organization ID: " . $f_OrgID . "\n";
-            //Config info
-            $f_Log_Request .= "Commercial type: " . $f_CommercialTypes . "\n";
-            $f_Log_Request .= "Location: " . $f_Location . "\n";
-            //And finally server info
-            $f_Log_Request .= "Hostname: " . $hostname . "\n";
-            $f_Log_Request .= "Password: " . $f_ServerPassword . "\n";
-            $f_Log_Request .= "OS Name: " . $f_OS_Name . "\n";
-            //Response
-            $response = $f_ScalewayServer->queryInfo;
-            //Send error to Utilities >> Log >> Module Log
-            logModuleCall('Scaleway', __FUNCTION__, $f_Log_Request, "blabla", $response);
-
-            //
-            // END REQUEST LOGGING
-            //
-
-            return "Failed to create server! Check Utilites >> Log >> Module log. Details: " . $f_ScalewayServer->queryInfo;
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
         }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
+
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
     }
-    return 'success';
+
+    Abort:
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
+
+
 function Scaleway_SuspendAccount(array $params)
 {
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+
+        if ($ScalewayServer->stop_server()) {
+            $LocalAPI_Data["serviceid"] = $params["serviceid"];
+            $LocalAPI_Data["status"] = "Suspended";
+            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+
+            $Return = "success";
         } else {
-            return "Invalid server id!";
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
         }
-        if ($f_ScalewayServer->poweroff_server()) {
-            $f_LocalAPIUser = $params["configoption4"];
-            $f_LocalAPI_Data["serviceid"] = $params["serviceid"];
-            //We only have to update server ID, the rest of field will be automaticall updated on refresh.
-            $f_LocalAPI_Data["status"] = "Suspended";
-            localAPI("UpdateClientProduct", $f_LocalAPI_Data, getAdminUserName());
-        } else {
-            return "Failed to suspend server! " . $f_ScalewayServer->queryInfo;
-        }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
+
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
     }
-    return 'success';
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
+
 function Scaleway_UnsuspendAccount(array $params)
 {
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+
+        if ($ScalewayServer->poweron_server()) {
+            $LocalAPI_Data["serviceid"] = $params["serviceid"];
+            $LocalAPI_Data["status"] = "Active";
+            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+
+            $Return = "success";
         } else {
-            return "Invalid server id!";
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
         }
-        if ($f_ScalewayServer->poweron_server()) {
-            $f_LocalAPIUser = $params["configoption4"];
-            $f_LocalAPI_Data["serviceid"] = $params["serviceid"];
-            $f_LocalAPI_Data["status"] = "Active";
-            localAPI("UpdateClientProduct", $f_LocalAPI_Data, getAdminUserName());
-        } else {
-            return "Failed to unsuspend server! " . $f_ScalewayServer->queryInfo;
-        }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
+
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
     }
-    return 'success';
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
-function Scaleway_RebootServer(array $params)
-{
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
-        } else {
-            return "Invalid server id!";
-        }
-        if ($f_ScalewayServer->reboot_server()) {
-            return "success";
-        } else {
-            return "Failed to reboot server! " . $f_ScalewayServer->queryInfo;
-        }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
-    }
-    return 'success';
-}
+
 function Scaleway_TerminateAccount(array $params)
 {
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+
+        if ($ScalewayServer->delete_server()) {
+            $LocalAPI_Data["serviceid"] = $params["serviceid"];
+            $LocalAPI_Data["status"] = "Terminated";
+            $LocalAPI_Data["customfields"] = base64_encode(serialize(array("Server ID"=> "TERMINATED-" . $ServerID )));
+            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+
+            $Return = "success";
         } else {
-            return "Invalid ServerID!";
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
         }
 
-        if ($f_ScalewayServer->delete_server()) {
-            $f_LocalAPIUser = $params["configoption4"];
-            $f_LocalAPI_Data["serviceid"] = $params["serviceid"];
-
-            //We only have to update server ID, the rest of field will be automaticall updated on refresh.
-            $f_LocalAPI_Data["status"] = "Terminated";
-            $f_LocalAPI_Data["customfields"] = base64_encode(serialize(array("Server ID"=> "TERMINATED-" . $f_ServerID )));  //keep history of server ID in case client made nasty things from your server
-            localAPI("UpdateClientProduct", $f_LocalAPI_Data, getAdminUserName());
-        } else {
-            return "Failed to terminate server server! " . $f_ScalewayServer->queryInfo;
-        }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
     }
-    return 'success';
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
-function Scaleway_AdminCustomButtonArray()
+
+function Scaleway_AdminCustomButtonArray(array $params)
 {
-    return array(
-        "Reboot server"=> "RebootServer",
-    );
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+        if (!$ScalewayServer->retrieveDetails()) {
+            $Return = array("ERROR: " . $ScalewayServer->queryInfo  => "");
+            goto Abort;
+        }
+
+        $Return = array();
+
+        if (strpos($ScalewayServer->state, 'NOT RUNNING') !== false) {
+            $Return = array_merge($Return, array("Start Server" => "StartServer"));
+
+        } elseif (strpos($ScalewayServer->state, 'RUNNING') !== false) {
+            $Return = array_merge($Return, array("Reboot Server" => "RebootServer",
+                                                "Stop Server" => "StopServer"));
+        }
+
+    } else {
+        $Return = array("INVALID FUNCTION REQUEST" => "");
+    }
+
+    Abort:
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
 
 function Scaleway_AdminServicesTabFields(array $params)
 {
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
 
-    logModuleCall('Scaleway', __FUNCTION__, "FUNCTION CALLED", "PARAM: " . PHP_EOL . PHP_EOL . json_encode($params, JSON_PRETTY_PRINT));
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
 
-    try {
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        $f_ScalewayServer->setServerId($f_ServerID);
-
-        if (!$f_ScalewayServer->retrieveDetails()) {
-            return array("Server error" => $f_ScalewayServer->queryInfo);
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+        if (!$ScalewayServer->retrieveDetails()) {
+            $Return = array("Can't " . __FUNCTION__ . ", Reason: " => $ScalewayServer->queryInfo);
+            goto Abort;
         }
 
-        //Updating fields with data returned from Scaleway.
-        $f_LocalAPIUser = $params["configoption4"];
-        $f_LocalAPI_Data["serviceid"] = $params["serviceid"];
-        $f_LocalAPI_Data["dedicatedip"] = $f_ScalewayServer->public_ip["address"];
-        $f_LocalAPI_Data["domain"] = $f_ScalewayServer->hostname;
-
-        //Need to analyze. It make same variables become undefined...
-        localAPI("UpdateClientProduct", $f_LocalAPI_Data, getAdminUserName());
+        // Updating fields with data returned from backend.
+        $LocalAPI_Data["serviceid"] = $params["serviceid"];
+        $LocalAPI_Data["dedicatedip"] = $ScalewayServer->public_ip["address"];
+        $LocalAPI_Data["domain"] = $ScalewayServer->hostname;
+        localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
 
         // Return an array based on the function's response.
-        return array(
-            'Server name' => $f_ScalewayServer->hostname,
-            'Server state' => $f_ScalewayServer->state,
-            'Disk' => $f_ScalewayServer->c_Info_Disk . "GB",
-            'Core' => $f_ScalewayServer->c_Info_Core,
-            'RAM' => $f_ScalewayServer->c_Info_RAM . "GB",
-
-
+        $Return = array(
+            'Server name' => $ScalewayServer->hostname,
+            'Server state' => $ScalewayServer->state,
+            'Disk' => $ScalewayServer->Info_Disk . "GB",
+            'Core' => $ScalewayServer->Info_Core,
+            'RAM' => $ScalewayServer->Info_RAM . "GB",
             'Image' => $params["customfields"]["Operating System"],
-            'Creation date' =>$f_ScalewayServer->creation_date,
-            'Modification date' => $f_ScalewayServer->modification_date,
-            'Public IPv4' => $f_ScalewayServer->public_ip["address"] . " [" . $f_ScalewayServer->public_ip["id"] . "]",
-            'Private IPv4' => $f_ScalewayServer->private_ip,
-            'IPv6' => $f_ScalewayServer->ipv6,
-            'Location' => $f_Location,
-            'Commercial type' => $f_ScalewayServer->commercial_type,
-            'Tags' => implode(",", $f_ScalewayServer->tags),
-            'Security group' => $f_ScalewayServer->security_group,
+            'Creation date' =>$ScalewayServer->creation_date,
+            'Modification date' => $ScalewayServer->modification_date,
+            'Public IPv4' => $ScalewayServer->public_ip["address"] . " [" . $ScalewayServer->public_ip["id"] . "]",
+            'Private IPv4' => $ScalewayServer->private_ip,
+            'IPv6' => $ScalewayServer->ipv6,
+            'Location' => $Location,
+            'Commercial type' => $ScalewayServer->commercial_type,
+            'Tags' => implode(", ", $ScalewayServer->tags),
+            'Security group' => $ScalewayServer->security_group,
         );
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
+
+    } else {
+        $Return = array("Can't " . __FUNCTION__ . ", Reason: " => "INVALID FUNCTION REQUEST");
     }
-    return array();
+
+    Abort:
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
+
+
+//  ███████╗███████╗██████╗ ██╗   ██╗███████╗██████╗      █████╗  ██████╗████████╗██╗ ██████╗ ███╗   ██╗
+//  ██╔════╝██╔════╝██╔══██╗██║   ██║██╔════╝██╔══██╗    ██╔══██╗██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║
+//  ███████╗█████╗  ██████╔╝██║   ██║█████╗  ██████╔╝    ███████║██║        ██║   ██║██║   ██║██╔██╗ ██║
+//  ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██╔══╝  ██╔══██╗    ██╔══██║██║        ██║   ██║██║   ██║██║╚██╗██║
+//  ███████║███████╗██║  ██║ ╚████╔╝ ███████╗██║  ██║    ██║  ██║╚██████╗   ██║   ██║╚██████╔╝██║ ╚████║
+//  ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+
+
+function Scaleway_RebootServer(array $params)
+{
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+
+        if ($ScalewayServer->reboot_server()) {
+            $Return = "success";
+        } else {
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+        }
+
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
+    }
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
+}
+
+function Scaleway_StopServer(array $params)
+{
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+
+        if ($ScalewayServer->stop_server()) {
+            $Return = "success";
+        } else {
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+        }
+
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
+    }
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
+}
+
+function Scaleway_StartServer(array $params)
+{
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+
+        if ($ScalewayServer->poweron_server()) {
+            $Return = "success";
+        } else {
+            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+        }
+
+    } else {
+        $Return = "INVALID FUNCTION REQUEST";
+    }
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
+}
+
 
 //   ██████╗██╗     ██╗███████╗███╗   ██╗████████╗
 //  ██╔════╝██║     ██║██╔════╝████╗  ██║╚══██╔══╝
@@ -945,148 +963,106 @@ function Scaleway_AdminServicesTabFields(array $params)
 //  ╚██████╗███████╗██║███████╗██║ ╚████║   ██║
 //   ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝
 
-function Scaleway_ClientAreaCustomButtonArray()
+function Scaleway_ClientAreaCustomButtonArray(array $params)
 {
-    return array(
-        "Reboot server" => "ClientRebootServer",
-        "Power OFF" => "ClientPowerOffServer",
-        "Power ON" => "ClientPowerOnServer"
-    );
-}
-function Scaleway_ClientRebootServer(array $params)
-{
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
-        } else {
-            return " - Error details: invalid server id!";
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+        if (!$ScalewayServer->retrieveDetails()) {
+            $Return = array("ERROR: " . $ScalewayServer->queryInfo  => "ClientArea");
+            goto Abort;
         }
-        if ($f_ScalewayServer->reboot_server()) {
-            return "success";
-        } else {
-            return "- Failed to reboot server! Error details: " . $f_ScalewayServer->queryInfo;
+
+        $Return = array("Refresh" => "ClientArea");
+
+        if (strpos($ScalewayServer->state, 'NOT RUNNING') !== false) {
+            $Return = array_merge($Return, array("Start Server" => "StartServer"));
+
+        } elseif (strpos($ScalewayServer->state, 'RUNNING') !== false) {
+            $Return = array_merge($Return, array("Reboot Server" => "RebootServer",
+                                                "Stop Server" => "StopServer"));
         }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
+
+    } else {
+        $Return = array("INVALID FUNCTION REQUEST" => "ClientArea");
     }
+
+    Abort:
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
-function Scaleway_ClientPowerOffServer(array $params)
-{
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
-        } else {
-            return " - Error details: invalid server id!";
-        }
-        if ($f_ScalewayServer->poweroff_server()) {
-            return "success";
-        } else {
-            return "- Failed to poweroff server! Error details: " . $f_ScalewayServer->queryInfo;
-        }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
-    }
-}
-function Scaleway_ClientPowerOnServer(array $params)
-{
-    try {
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        if (strlen($f_ServerID) == 36) {
-            $f_ScalewayServer->setServerId($f_ServerID);
-        } else {
-            return " - Error details: invalid server id!";
-        }
-        if ($f_ScalewayServer->poweron_server()) {
-            return "success";
-        } else {
-            return "- Failed to poweron server! Error details: " . $f_ScalewayServer->queryInfo;
-        }
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        return $e->getMessage();
-    }
-}
+
 function Scaleway_ClientArea(array $params)
 {
-    try {
-        $f_ServerID = $params["customfields"]["Server ID"];
-        $f_Token = $params["configoption1"];
-        $f_OrgID = $params["configoption2"];
-        $f_Location = $params["customfields"]["Location"];
-        $f_ScalewayServer = new ScalewayServer($f_Token, $f_OrgID, $f_Location);
-        $f_ScalewayServer->setServerId($f_ServerID);
-        $f_ScalewayServer->retrieveDetails();
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
 
-        return array(
+    $RequestLog = "Token: " . $Token . PHP_EOL .
+                  "OrgID: " . $OrgID . PHP_EOL . 
+                  "ServerID: " . $ServerID . PHP_EOL . 
+                  "Location: " . $Location . PHP_EOL . PHP_EOL .
+                  "Raw Param: " . PHP_EOL . print_r($params, true);
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+        $ScalewayServer->setServerId($ServerID);
+        if (!$ScalewayServer->retrieveDetails()) {
+            $Return = array('tabOverviewReplacementTemplate' => 'error.tpl',
             'templateVariables' => array(
-                'sid' =>$f_ScalewayServer->c_ServerID,
-                'sname' => $f_ScalewayServer->hostname,
-                'sstate' => $f_ScalewayServer->state,
-                'Core' => $f_ScalewayServer->c_Info_Core,
-                'RAM' => $f_ScalewayServer->c_Info_RAM . "GB",
-                'Disk' => $f_ScalewayServer->c_Info_Disk . "GB",
-                'OS' => $params["customfields"]["Operating System"],
-                'creationdate' =>$f_ScalewayServer->creation_date,
-                'publicipv4' => $f_ScalewayServer->public_ip["address"],
-                'privateipv4' => $f_ScalewayServer->private_ip,
-                'ipv6' => $f_ScalewayServer->ipv6,
-                'modificationdate' => $f_ScalewayServer->modification_date,
-                'location' => $f_Location,
-                'sec_group' => $f_ScalewayServer->security_group,
-                'username' => $params["username"],
-                'password' => $params["password"],
-            ));
-    } catch (Exception $e) {
-        // Record the error in WHMCS's module log.
-        logModuleCall(
-            'Scaleway',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
-        // In an error condition, display an error page.
-        return array(
-            'tabOverviewReplacementTemplate' => 'error.tpl',
-            'templateVariables' => array(
-                'usefulErrorHelper' => $e->getMessage(),
-            ));
+                                        'usefulErrorHelper' => "ERROR: " . $ScalewayServer->queryInfo,
+                                        )
+            );
+            goto Abort;
+        }
+
+        $Return = array('templateVariables' => array(
+                                                    'sid' =>$ScalewayServer->ServerID,
+                                                    'sname' => $ScalewayServer->hostname,
+                                                    'sstate' => $ScalewayServer->state,
+                                                    'Core' => $ScalewayServer->Info_Core,
+                                                    'RAM' => $ScalewayServer->Info_RAM . "GB",
+                                                    'Disk' => $ScalewayServer->Info_Disk . "GB",
+                                                    'OS' => $params["customfields"]["Operating System"],
+                                                    'creationdate' =>$ScalewayServer->creation_date,
+                                                    'publicipv4' => $ScalewayServer->public_ip["address"],
+                                                    'privateipv4' => $ScalewayServer->private_ip,
+                                                    'ipv6' => $ScalewayServer->ipv6,
+                                                    'modificationdate' => $ScalewayServer->modification_date,
+                                                    'location' => $Location,
+                                                    'sec_group' => $ScalewayServer->security_group,
+                                                    'username' => $params["username"],
+                                                    'password' => $params["password"],
+                                                    )
+                            );
+
+    } else {
+        $Return = array('tabOverviewReplacementTemplate' => 'error.tpl',
+                        'templateVariables' => array(
+                                                    'usefulErrorHelper' => "INVALID FUNCTION REQUEST",
+                                                    )
+                        );
     }
+
+    Abort:
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
+
+
