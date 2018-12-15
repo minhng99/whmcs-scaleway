@@ -156,7 +156,7 @@ class ScalewayAPI
 
 
     // Modify Cloud-init data
-    private function Modify_Cloudinit($Data, $ServerID)
+    public function Modify_Cloudinit($Data, $ServerID)
     {
         $http_method = "PATCH";
         $Endpoint = "/servers/" . $ServerID . "/user_data/cloud-init";
@@ -164,6 +164,55 @@ class ScalewayAPI
 
         logModuleCall('Scaleway', __FUNCTION__, 'ServerID:' . PHP_EOL . $ServerID . PHP_EOL . PHP_EOL . "Data:" . PHP_EOL . print_r($Data, true) , print_r($Return, true));
         return $Return;
+    }
+
+    public function modify_ip_ptr($IP_ID, $PTR = "")
+    {
+
+        $Endpoint = "/ips/" . $IP_ID;
+
+        // Detach IP
+        $Data = array(
+            "reverse" => empty($PTR) ? "customer.jiffy.host" : $PTR
+        );
+
+        $http_method = "PATCH";
+        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($Data, JSON_PRETTY_PRINT), "application/json");
+
+        return $Return;
+    }
+
+    public function create_reserved_ip()
+    {
+        $http_method = "POST";
+        $Endpoint = "/ips" ;
+        $Data = json_encode(array("organization" => $this->OrgID), JSON_PRETTY_PRINT);
+        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, $Data, "application/json");
+        return $Return;
+    }
+
+    public function delete_ip_address($ip_id)
+    {
+        $Endpoint = "/ips/" . $ip_id;
+
+        // Detach IP
+        $Data = array(
+            "server" => NULL
+        );
+
+        $http_method = "PATCH";
+        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($Data, JSON_PRETTY_PRINT), "application/json");
+
+        // Failed to detatch, IDK
+        if($result["STATUS"] != 200)
+        {
+            return $result;
+        }
+
+        // Delete IP
+        $http_method = "DELETE";
+        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
+        return $result;
     }
 
     //Delete a volume by it's id
@@ -229,6 +278,9 @@ class ScalewayAPI
             array_push($VolumesArray, $AdditionalVolumeArray[$i]);
         }
 
+        $NewIP_ID = json_decode($this->create_reserved_ip()["json"], true)["ip"]["id"];
+        $this->modify_ip_ptr($NewIP_ID);
+
         $POST_Data =
         [
             "organization" => $this->OrgID,
@@ -236,6 +288,7 @@ class ScalewayAPI
             "commercial_type" => $CommercialType,
             "tags"         => $tags,
             "boot_type"  => "local",
+            "public_ip" => $NewIP_ID,
             "enable_ipv6" => true,
             "volumes"      =>  (object) $VolumesArray
         ];
@@ -255,9 +308,6 @@ class ScalewayAPI
 
         return $server_creation_result;
     }
-
-
-
 
     //Function which return server info
     public function retrieve_server_info($ServerID)
@@ -439,14 +489,24 @@ class ScalewayServer
     }
     public function delete_server()
     {
+        // Getting the infos before deletion
+        $serverInfoResp = $this->ScwAPI->retrieve_server_info($this->ServerID);
+        $AttachedIP_ID = json_decode($serverInfoResp["json"], true)["server"]["public_ip"]["id"];
+
+        // Delete its reserved IP
+        $this->ScwAPI->delete_ip_address($AttachedIP_ID);
+
         $deleteServerResponse = $this->ScwAPI->server_action($this->ServerID, "terminate");
+
         if ($deleteServerResponse["STATUS"] == 202) {
             return true;
+
         } else {
             $this->queryInfo = json_decode($deleteServerResponse["json"], true)["message"];
             return false;
         }
     }
+
     public function stop_server()
     {
         $powerofresult = $this->ScwAPI->server_action($this->ServerID, "stop_in_place");
@@ -586,7 +646,7 @@ function Scaleway_CreateAccount(array $params)
     $OrderID = $params["model"]["orderid"];
     $ServiceID = $params["serviceid"];
     
-    $OSName = $params["customfields"]["Operating System"];
+    $OS_Name = $params["customfields"]["Operating System"];
 
     $RequestLog = "Token: " . $Token . PHP_EOL .
                   "OrgID: " . $OrgID . PHP_EOL . 
@@ -595,11 +655,11 @@ function Scaleway_CreateAccount(array $params)
                   "ClientID: " . $ClientID . PHP_EOL . 
                   "OrderID: " . $OrderID . PHP_EOL . 
                   "ServiceID: " . $ServiceID . PHP_EOL . 
-                  "OSName: " . $OSName . PHP_EOL .  PHP_EOL .
+                  "OS_Name: " . $OS_Name . PHP_EOL .  PHP_EOL .
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && $Location != "" && $CommercialType != "" && $ServerName != "" &&
-        $ClientID != "" && $OrderID != "" && $ServiceID != "" && $OSName != "") {
+        $ClientID != "" && $OrderID != "" && $ServiceID != "" && $OS_Name != "") {
         $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
 
         $OSImageID = $ScalewayServer->retrieve_snapshot_id($OS_Name);
@@ -627,7 +687,7 @@ function Scaleway_CreateAccount(array $params)
 
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
@@ -666,7 +726,7 @@ function Scaleway_SuspendAccount(array $params)
 
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
@@ -702,7 +762,7 @@ function Scaleway_UnsuspendAccount(array $params)
 
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
@@ -730,8 +790,13 @@ function Scaleway_TerminateAccount(array $params)
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
         $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
         $ScalewayServer->setServerId($ServerID);
+        if (!$ScalewayServer->retrieveDetails()) {
+            $Return = array("ERROR: " . $ScalewayServer->queryInfo  => "");
+            goto Abort;
+        }
 
         if ($ScalewayServer->delete_server()) {
+
             $LocalAPI_Data["serviceid"] = $params["serviceid"];
             $LocalAPI_Data["status"] = "Terminated";
             $LocalAPI_Data["customfields"] = base64_encode(serialize(array("Server ID"=> "TERMINATED-" . $ServerID )));
@@ -739,12 +804,14 @@ function Scaleway_TerminateAccount(array $params)
 
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
         $Return = "INVALID FUNCTION REQUEST";
     }
+
+    Abort:
 
     logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
 
@@ -810,7 +877,7 @@ function Scaleway_AdminServicesTabFields(array $params)
         $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
         $ScalewayServer->setServerId($ServerID);
         if (!$ScalewayServer->retrieveDetails()) {
-            $Return = array("Can't " . __FUNCTION__ . ", Reason: " => $ScalewayServer->queryInfo);
+            $Return = array("Failed Reason: " => $ScalewayServer->queryInfo);
             goto Abort;
         }
 
@@ -840,7 +907,7 @@ function Scaleway_AdminServicesTabFields(array $params)
         );
 
     } else {
-        $Return = array("Can't " . __FUNCTION__ . ", Reason: " => "INVALID FUNCTION REQUEST");
+        $Return = array("Failed Reason: " => "INVALID FUNCTION REQUEST");
     }
 
     Abort:
@@ -879,7 +946,7 @@ function Scaleway_RebootServer(array $params)
         if ($ScalewayServer->reboot_server()) {
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
@@ -911,7 +978,7 @@ function Scaleway_StopServer(array $params)
         if ($ScalewayServer->stop_server()) {
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
@@ -943,7 +1010,7 @@ function Scaleway_StartServer(array $params)
         if ($ScalewayServer->poweron_server()) {
             $Return = "success";
         } else {
-            $Return = "Can't " . __FUNCTION__ . ", Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
 
     } else {
