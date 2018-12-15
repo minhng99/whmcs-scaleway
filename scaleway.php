@@ -341,7 +341,7 @@ class ScalewayAPI
     //Server actions are: power on, stop_in_place, reboot
     public function server_action( $ServerID, $Action)
     {
-        if ($Action != "poweron" && $Action != "stop_in_place" && $Action != "reboot" && $Action != "terminate") {
+        if ($Action != "poweron" && $Action != "stop_in_place" && $Action != "reboot" && $Action != "terminate" && $Action !="poweroff") {
             return array(
                     "STATUS" => "400",
                     "json" => "{\"error\" : \"Invalid Action\"}"
@@ -537,6 +537,18 @@ class ScalewayServer
             return true;
         } else {
             $this->queryInfo = json_decode($reboot_result["json"], true)["message"];
+            return false;
+        }
+    }
+
+    public function archive_server()
+    {
+        $archive_result = $this->ScwAPI->server_action($this->ServerID, "poweroff");
+        if ($archive_result["STATUS"] == 202) {
+            $this->retrieveDetails();
+            return true;
+        } else {
+            $this->queryInfo = json_decode($archive_result["json"], true)["message"];
             return false;
         }
     }
@@ -1078,6 +1090,7 @@ function Scaleway_ClientArea(array $params)
     $OrgID = $params["configoption2"];
     $ServerID = $params["customfields"]["Server ID"];
     $Location = $params["customfields"]["Location"];
+    $ServiceID = $params["serviceid"];
 
     $RequestLog = "Token: " . $Token . PHP_EOL .
                   "OrgID: " . $OrgID . PHP_EOL . 
@@ -1098,6 +1111,7 @@ function Scaleway_ClientArea(array $params)
         }
 
         $Return = array('templateVariables' => array(
+                                                    'serviceid' => $ServiceID,
                                                     'sid' =>$ScalewayServer->ServerID,
                                                     'sname' => $ScalewayServer->hostname,
                                                     'sstate' => $ScalewayServer->state,
