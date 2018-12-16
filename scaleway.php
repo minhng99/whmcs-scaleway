@@ -166,6 +166,18 @@ class ScalewayAPI
         return $Return;
     }
 
+    public function Modify_Hostname( $ServerID, $New_Hostname)
+    {
+        $http_method = "PATCH";
+        $Endpoint = "/servers/" . $ServerID ;
+        $Data = array("name" => $New_Hostname);
+        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($Data, JSON_PRETTY_PRINT), "application/json");
+
+        logModuleCall('Scaleway', __FUNCTION__, 'ServerID:' . PHP_EOL . $ServerID . PHP_EOL . PHP_EOL . "Data:" . PHP_EOL . print_r($Data, true) , print_r($Return, true));
+        return $Return;
+    }
+
+
     public function modify_ip_ptr($IP_ID, $PTR = "")
     {
 
@@ -430,13 +442,15 @@ class ScalewayServer
             $this->hostname = substr($serverInfoResp["hostname"], strlen($this->ServerPrefix));
 
             if ($serverInfoResp["state"] == "stopped in place") {
-                $this->state = "<font color=\"red\">NOT RUNNING</font>";
+                $this->state = '<span class="label label-danger">NOT RUNNING</span>';
             } elseif ($serverInfoResp["state"] == "stopping") {
-                $this->state = "<font color=\"orange\">SHUTTING DOWN</font>";
+                $this->state = '<span class="label label-warning">SHUTTING DOWN</span>';
+            } elseif ($serverInfoResp["state"] == "stopped") {
+                $this->state = '<span class="label label-default">ARCHIVED</span>';
             } elseif ($serverInfoResp["state"] == "running") {
-                $this->state = "<font color=\"green\">RUNNING</font>";
+                $this->state = '<span class="label label-success">RUNNING</span>';
             } elseif ($serverInfoResp["state"] == "starting") {
-                $this->state = "<font color=\"blue\">STARTING</font>";
+                $this->state = '<span class="label label-primary">STARTING</span>';
             } else {
                 $this->state = $serverInfoResp["state"];
             }
@@ -569,35 +583,12 @@ class ScalewayServer
 
         return $snapshot_id;
     }
-}
 
-//  ███╗   ███╗██╗███████╗ ██████╗
-//  ████╗ ████║██║██╔════╝██╔════╝
-//  ██╔████╔██║██║███████╗██║     
-//  ██║╚██╔╝██║██║╚════██║██║     
-//  ██║ ╚═╝ ██║██║███████║╚██████╗
-//  ╚═╝     ╚═╝╚═╝╚══════╝ ╚═════╝
+    public function Modify_Hostname($New_Hostname)
+    {
+        return $this->ScwAPI->Modify_Hostname($this->ServerID, $this->$ServerPrefix . $New_Hostname);
+    }
 
-function getAdminUserName() {
-    $adminData = Capsule::table('tbladmins')
-            ->where('disabled', '=', 0)
-            ->first();
-    if (!empty($adminData))
-        return $adminData->username;
-    else
-        die('No admin exist. Why So?');
-}
-
-function prettyPrintDate($date) {
-    $date = date_parse($date);
-    $date = sprintf("%d/%d/%d %d:%d:%d UTC",
-    $date["year"],
-    $date["month"],
-    $date["day"],
-    $date["hour"],
-    $date["minute"],
-    $date["second"]);
-    return $date;
 }
 
 //  ██╗    ██╗██╗  ██╗███╗   ███╗ ██████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
@@ -731,7 +722,7 @@ function Scaleway_SuspendAccount(array $params)
         $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
         $ScalewayServer->setServerId($ServerID);
 
-        if ($ScalewayServer->stop_server()) {
+        if ($ScalewayServer->archive_server()) {
             $LocalAPI_Data["serviceid"] = $params["serviceid"];
             $LocalAPI_Data["status"] = "Suspended";
             localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
@@ -853,7 +844,8 @@ function Scaleway_AdminCustomButtonArray(array $params)
 
         $Return = array();
 
-        if (strpos($ScalewayServer->state, 'NOT RUNNING') !== false) {
+        if (strpos($ScalewayServer->state, 'NOT RUNNING') !== false ||
+             strpos($ScalewayServer->state, 'ARCHIVED') !== false) {
             $Return = array_merge($Return, array("Start Server" => "StartServer"));
 
         } elseif (strpos($ScalewayServer->state, 'RUNNING') !== false) {
@@ -1042,48 +1034,6 @@ function Scaleway_StartServer(array $params)
 //  ╚██████╗███████╗██║███████╗██║ ╚████║   ██║
 //   ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝
 
-function Scaleway_ClientAreaCustomButtonArray(array $params)
-{
-    $Token = $params["configoption1"];
-    $OrgID = $params["configoption2"];
-    $ServerID = $params["customfields"]["Server ID"];
-    $Location = $params["customfields"]["Location"];
-
-    $RequestLog = "Token: " . $Token . PHP_EOL .
-                  "OrgID: " . $OrgID . PHP_EOL . 
-                  "ServerID: " . $ServerID . PHP_EOL . 
-                  "Location: " . $Location . PHP_EOL . PHP_EOL .
-                  "Raw Param: " . PHP_EOL . print_r($params, true);
-
-    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
-        if (!$ScalewayServer->retrieveDetails()) {
-            $Return = array("ERROR: " . $ScalewayServer->queryInfo  => "ClientArea");
-            goto Abort;
-        }
-
-        $Return = array("Refresh" => "ClientArea");
-
-        if (strpos($ScalewayServer->state, 'NOT RUNNING') !== false) {
-            $Return = array_merge($Return, array("Start Server" => "StartServer"));
-
-        } elseif (strpos($ScalewayServer->state, 'RUNNING') !== false) {
-            $Return = array_merge($Return, array("Reboot Server" => "RebootServer",
-                                                "Stop Server" => "StopServer"));
-        }
-
-    } else {
-        $Return = array("INVALID FUNCTION REQUEST" => "ClientArea");
-    }
-
-    Abort:
-
-    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
-
-    return $Return;
-}
-
 function Scaleway_ClientArea(array $params)
 {
     $Token = $params["configoption1"];
@@ -1091,6 +1041,7 @@ function Scaleway_ClientArea(array $params)
     $ServerID = $params["customfields"]["Server ID"];
     $Location = $params["customfields"]["Location"];
     $ServiceID = $params["serviceid"];
+
 
     $RequestLog = "Token: " . $Token . PHP_EOL .
                   "OrgID: " . $OrgID . PHP_EOL . 
@@ -1110,24 +1061,48 @@ function Scaleway_ClientArea(array $params)
             goto Abort;
         }
 
+        if($_SERVER['REQUEST_METHOD'] == "POST" &&
+          strpos($ScalewayServer->state, 'ARCHIVED') == false) // Prevent user "wake" the suspended server
+        {
+            $ClientAction=customAction($params);
+        }
+
+        // Get the status after action
+        $ScalewayServer->retrieveDetails();
+
+        if (strpos($ScalewayServer->state, 'NOT RUNNING') !== false) {
+            $Is_Running = 0;
+        } elseif (strpos($ScalewayServer->state, 'RUNNING') !== false) {
+            $Is_Running = 1;
+        } else {
+            $Is_Running = -1;
+        }
+
+
         $Return = array('templateVariables' => array(
-                                                    'serviceid' => $ServiceID,
-                                                    'sid' =>$ScalewayServer->ServerID,
-                                                    'sname' => $ScalewayServer->hostname,
-                                                    'sstate' => $ScalewayServer->state,
-                                                    'Core' => $ScalewayServer->Info_Core,
+                                                    'Action_Result' => $ClientAction,
+
+
+                                                    'Service_ID' => $ServiceID,
+                                                    'Server_UUID' =>$ScalewayServer->ServerID,
+                                                    'Hostname' => $ScalewayServer->hostname,
+                                                    'Server_State' => $ScalewayServer->state,
+                                                    'IPv4_Public' => $ScalewayServer->public_ip["address"],
+                                                    'IPv4_Private' => $ScalewayServer->private_ip,
+                                                    'IPv6' => $ScalewayServer->ipv6,
+                                                    'Username' => $params["username"],
+                                                    'Password' => $params["password"],
+                                                    'CPU_Core' => $ScalewayServer->Info_Core,
                                                     'RAM' => $ScalewayServer->Info_RAM . "GB",
                                                     'Disk' => $ScalewayServer->Info_Disk . "GB",
                                                     'OS' => $params["customfields"]["Operating System"],
-                                                    'creationdate' =>$ScalewayServer->creation_date,
-                                                    'publicipv4' => $ScalewayServer->public_ip["address"],
-                                                    'privateipv4' => $ScalewayServer->private_ip,
-                                                    'ipv6' => $ScalewayServer->ipv6,
-                                                    'modificationdate' => $ScalewayServer->modification_date,
-                                                    'location' => $Location,
-                                                    'sec_group' => $ScalewayServer->security_group,
-                                                    'username' => $params["username"],
-                                                    'password' => $params["password"],
+                                                    'Creation_Date' =>$ScalewayServer->creation_date,
+                                                    'Modification_Date' => $ScalewayServer->modification_date,
+                                                    'Location' => $Location,
+                                                    'Security_Group' => $ScalewayServer->security_group,
+
+
+                                                    'Is_Running' => $Is_Running,
                                                     )
                             );
 
@@ -1137,7 +1112,11 @@ function Scaleway_ClientArea(array $params)
                                                     'usefulErrorHelper' => "INVALID FUNCTION REQUEST",
                                                     )
                         );
+        
+        goto Abort;
     }
+
+
 
     Abort:
 
@@ -1147,3 +1126,117 @@ function Scaleway_ClientArea(array $params)
 }
 
 
+
+//  ███╗   ███╗██╗███████╗ ██████╗
+//  ████╗ ████║██║██╔════╝██╔════╝
+//  ██╔████╔██║██║███████╗██║     
+//  ██║╚██╔╝██║██║╚════██║██║     
+//  ██║ ╚═╝ ██║██║███████║╚██████╗
+//  ╚═╝     ╚═╝╚═╝╚══════╝ ╚═════╝
+function getOSList($PID)
+{
+    $Query = Capsule::table('tblcustomfields')
+    ->where('tblcustomfields.fieldname',"Operating System")
+    ->where('tblcustomfields.relid', $pid)
+    ->select('fieldoptions')
+    ->get();
+
+    if (empty($Query)) {
+        return;
+    } else {
+        return explode(",", $Query["fieldoptions"]);
+    }
+}
+
+function customAction(array $params)
+{
+
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+
+    $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
+    $ScalewayServer->setServerId($ServerID);
+
+
+    $Return = "ERROR: No valid action.";
+
+    if(!empty($_POST["Power"]))
+    {
+        switch ($_POST['Power']) {
+            case "Reboot":
+                $Action = Scaleway_RebootServer($params);
+                if ($Action == "success"){
+                    $Return = "SUCCESS: Server is rebooting...";
+                } else {
+                    $Return = $Action;
+                }
+                break;
+            case "Stop":
+                $Action = Scaleway_StopServer($params);
+                if ($Action == "success"){
+                    $Return = "SUCCESS: Server is stopping...";
+                } else {
+                    $Return = $Action;
+                }
+                break;
+            case "Start":
+                $Action = Scaleway_StartServer($params);
+                if ($Action == "success"){
+                    $Return = "SUCCESS: Server is starting...";
+                } else {
+                    $Return = $Action;
+                }
+                break;
+            default:
+                $Return = "ERROR: Invalid Power action.";
+        }
+    } elseif(!empty($_POST["OS-Install"])) {
+        $Return = $_POST["OS-Install"];
+    } elseif(!empty($_POST["New-Hostname"])) {
+        $New_Hostname = $_POST["New-Hostname"];
+        if (empty($New_Hostname)) {
+            $Return = "ERROR: Invalid hostname.";
+        } else {
+            $Action = $ScalewayServer->Modify_Hostname($New_Hostname);
+            if ($Action["STATUS"] == 200){
+                $LocalAPI_Data["serviceid"] = $params["serviceid"];
+                $LocalAPI_Data["domain"] = $New_Hostname;
+                localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+
+                $Return = "SUCCESS: Hostname updated!";
+
+            } else {
+                $Return = "ERROR: Can't update Hostname, please contact customer support.";
+            }
+
+        }
+    }
+
+
+
+    return $Return;
+}
+
+function getAdminUserName() {
+    $adminData = Capsule::table('tbladmins')
+            ->where('disabled', '=', 0)
+            ->first();
+    if (!empty($adminData))
+        return $adminData->username;
+    else
+        die('No admin exist. Why So?');
+}
+
+function prettyPrintDate($date) {
+    $date = date_parse($date);
+    $date = sprintf("%d/%d/%d %d:%d:%d UTC",
+    $date["year"],
+    $date["month"],
+    $date["day"],
+    $date["hour"],
+    $date["minute"],
+    $date["second"]);
+    return $date;
+}

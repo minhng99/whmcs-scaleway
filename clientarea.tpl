@@ -1,33 +1,133 @@
-                    <td>
-                        <form action="clientarea.php?action=productdetails&id={$serviceid}" method="post" style="float: right" class="mg-form">
-                            <input type="hidden" name="alias" value="lol" />
-                            <input type="hidden" name="modaction" value="alias_delete" />
-                            <input type="submit" value="del" class="btn-remove btn" />
-                        </form>
-                    </td>
 
-<h1 align="left"n>Server info:</h1>
+{if $Action_Result}
+  <hr>
+  {if $Action_Result|strstr:"SUCCESS"}
+    <div class="alert alert-success text-center" role="alert">
+      {$Action_Result}
+    </div>
+  {else}
+    <div class="alert alert-danger text-center" role="alert">
+      {$Action_Result}
+    </div>
+  {/if}
+{/if}
+
 <hr>
-<div align="left">
-    <p>Server ID: {$sid}</p>
-    <p>Server name: {$sname}</p>
-    <p>Server state: <b>{$sstate}</b></p>
-    <hr>
-    <p>Core: {$Core}</p>
-    <p>RAM: {$RAM}</p>
-    <p>Disk: {$Disk}</p>
-    <p>Operating System: {$OS}</p>
-    <p>Creation date: {$creationdate}</p>
-    <p>Modification date: {$modificationdate}</p>
-    <hr>
-    <p>Public IPv4: <b>{$publicipv4}</b></p>
-    <p>Private IPv4: {$privateipv4}</p>
-    <p>IPv6: <b>{$ipv6}</b></p>
-    <hr>
-    <p>Location: {$location}</p>
-    <p>Allow STMP: {$sec_group}</p>
-    <hr>
-    <p>Default Username: {$username}</p>
-    <p>Default Password: {$password}</p>
+<div class="panel panel-primary">
+  <div class="panel-heading">
+    <h3 class="panel-title" align="left">
+      <span class="glyphicon glyphicon-tasks" aria-hidden="true"></span>
+      Server Info
+    </h3>
+  </div>
+  <div class="panel-body">
+    <div align="left">
+        <p>Server UUID: {$Server_UUID}</p>
+        <p>Hostname: {$Hostname}</p>
+        <p>Server State: <b>{$Server_State}</b></p>
+        <hr>
+        <p>Public IPv4: <span class="label label-primary">{$IPv4_Public}</span></p>
+        <p>Private IPv4: {$IPv4_Private}</p>
+        <p>IPv6: <span class="label label-primary">{$IPv6}</span></p>
+        <p>Default Username: {$Username}</p>
+        <p>Default Password: {$Password}</p>
+        <hr>
+        <p>CPU Core: {$CPU_Core}</p>
+        <p>RAM: {$RAM}</p>
+        <p>Disk: {$Disk}</p>
+        <p>Operating System: {$OS}</p>
+        <p>Creation Date: {$Creation_Date}</p>
+        <p>Modification Date: {$Modification_Date}</p>
+        <hr>
+        <p>Location: {$Location}</p>
+        <p>Allow STMP: {$Security_Group}</p>
+    </div>
+  </div>
 </div>
 
+{if $Is_Running != -1}
+  <hr>
+  <div class="panel panel-warning">
+    <div class="panel-heading">
+      <h3 class="panel-title" align="left">
+        <span class="glyphicon glyphicon-off" aria-hidden="true"></span>
+        Power Management
+      </h3>
+    </div>
+    <div class="panel-body">
+      <form action="clientarea.php?action=productdetails&id={$Service_ID}" method="post">
+        {if $Is_Running == 1}
+          <button name="Power" type="submit" onclick="return confirm('Are you sure want to Reboot?');" class="btn btn-warning" value="Reboot">
+            <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span>
+            Reboot
+          </button>
+          <button name="Power" type="submit" onclick="return confirm('Are you sure want to Stop?');" class="btn btn-danger" value="Stop">
+            <span class="glyphicon glyphicon-stop" aria-hidden="true"></span>
+            Stop
+          </button>
+        {elseif $Is_Running == 0}
+          <button name="Power" type="submit" onclick="return confirm('Are you sure want to Start?');" class="btn btn-success" value="Start">
+            <span class="glyphicon glyphicon-play" aria-hidden="true"></span>
+            Start
+          </button>
+        {/if}
+      </form>
+    </div>
+  </div>
+{/if}
+
+{if $Is_Running != -1}
+  <hr>
+  <div class="panel panel-warning">
+    <div class="panel-heading">
+      <h3 class="panel-title" align="left">
+        <span class="glyphicon glyphicon-wrench" aria-hidden="true"></span>
+        OS Installation
+      </h3>
+    </div>
+    <div class="panel-body" align="left">
+        <form action="clientarea.php?action=productdetails&id={$Service_ID}" method="post">
+          <label>Select the OS that you want to switch or reinstall:</label>
+          <div class="form-group">
+            <select class="form-control" name="OS-Install">
+              <option>1</option>
+              <option>2</option>
+              <option>3</option>
+              <option>4</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <button type="submit" onclick="return confirm('Are you sure want to install OS? ALL DATA WILL BE LOST');" class="btn btn-danger">
+              <span class="glyphicon glyphicon-cog" aria-hidden="true"></span>
+              Install
+            </button>
+          </div>
+      </form>
+
+    </div>
+  </div>
+{/if}
+
+<hr>
+<div class="panel panel-default">
+  <div class="panel-heading">
+    <h3 class="panel-title" align="left">
+      <span class="glyphicon glyphicon-list-alt" aria-hidden="true"></span>
+      Misc
+    </h3>
+  </div>
+  <div class="panel-body" align="left">
+      <form action="clientarea.php?action=productdetails&id={$Service_ID}" method="post">
+        <label>Change Hostname:</label>
+        <div class="form-group">
+          <input name="New-Hostname" type="text" class="form-control" placeholder="{$Hostname}">
+        </div>
+        <div class="form-group">
+          <button type="submit" onclick="return confirm('Are you sure want to change Hostname?');" class="btn btn-success">
+            <span class="glyphicon glyphicon-pencil" aria-hidden="true"></span>
+            Update Hostname
+          </button>
+        </div>
+    </form>
+  </div>
+</div>
