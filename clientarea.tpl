@@ -90,10 +90,7 @@
           <label>Select the OS that you want to switch or reinstall:</label>
           <div class="form-group">
             <select class="form-control" name="OS-Install">
-              <option>1</option>
-              <option>2</option>
-              <option>3</option>
-              <option>4</option>
+              {$Available_OS}
             </select>
           </div>
           <div class="form-group">

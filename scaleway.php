@@ -321,6 +321,39 @@ class ScalewayAPI
         return $server_creation_result;
     }
 
+    /**
+     * Create a new Scaleway Volume from Snapshot UUID
+     * 
+     * @param   string  $Snapshot_UUID      UUID of Snapshot to create Volume from
+     * @param   string  $New_Volume_Name    Name of the newly created Volume
+     * @return  array   ["STATUS"]          Integer of Replied HTTP code
+     * @return  array   ["json"]            JSON data from backend
+     */
+    public function Volume_from_Snapshot($Snapshot_UUID, $New_Volume_Name)
+    {
+        $Return = array(
+            "STATUS" => -1,
+            "json" => ""
+        )
+
+        if(!isValidUUID($Snapshot_UUID) || !is_string($New_Volume_Name) || empty($New_Volume_Name))
+        {
+
+        }
+
+        // Return Error when ServerID is invalid.
+        if ($ServerID == "" || strpos($ServerID, "TERMINATED") !== false) {
+            return array(
+                "STATUS" => "400",
+                "json" => "{\"error\" : \"Invalid ServerID\"}"
+            );
+        }
+        $http_method = "GET";
+        $Endpoint = "/servers/" . $ServerID;
+        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
+        return $result;
+    }
+
     //Function which return server info
     public function retrieve_server_info($ServerID)
     {
@@ -420,15 +453,10 @@ class ScalewayServer
     public $security_group = "";
 
 
-    public function __construct($Token, $OrgID, $Location)
+    public function __construct($Token, $OrgID, $Location, $Server_ID = "")
     {
         $this->ScwAPI = new ScalewayAPI($Token, $OrgID, $Location);
-    }
-
-
-    public function setServerId($srv_id)
-    {
-        $this->ServerID = $srv_id;
+        $this->ServerID = $Server_ID;
     }
 
     public function retrieveDetails()
@@ -719,8 +747,7 @@ function Scaleway_SuspendAccount(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
         if ($ScalewayServer->archive_server()) {
             $LocalAPI_Data["serviceid"] = $params["serviceid"];
@@ -755,8 +782,7 @@ function Scaleway_UnsuspendAccount(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
         if ($ScalewayServer->poweron_server()) {
             $LocalAPI_Data["serviceid"] = $params["serviceid"];
@@ -791,8 +817,7 @@ function Scaleway_TerminateAccount(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
         if (!$ScalewayServer->retrieveDetails()) {
             $Return = array("ERROR: " . $ScalewayServer->queryInfo  => "");
             goto Abort;
@@ -835,8 +860,7 @@ function Scaleway_AdminCustomButtonArray(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
         if (!$ScalewayServer->retrieveDetails()) {
             $Return = array("ERROR: " . $ScalewayServer->queryInfo  => "");
             goto Abort;
@@ -878,8 +902,7 @@ function Scaleway_AdminServicesTabFields(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
         if (!$ScalewayServer->retrieveDetails()) {
             $Return = array("Failed Reason: " => $ScalewayServer->queryInfo);
             goto Abort;
@@ -944,8 +967,7 @@ function Scaleway_RebootServer(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
         if ($ScalewayServer->reboot_server()) {
             $Return = "success";
@@ -976,8 +998,7 @@ function Scaleway_StopServer(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
         if ($ScalewayServer->stop_server()) {
             $Return = "success";
@@ -1008,8 +1029,7 @@ function Scaleway_StartServer(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
         if ($ScalewayServer->poweron_server()) {
             $Return = "success";
@@ -1050,8 +1070,8 @@ function Scaleway_ClientArea(array $params)
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
-        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-        $ScalewayServer->setServerId($ServerID);
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
+
         if (!$ScalewayServer->retrieveDetails()) {
             $Return = array('tabOverviewReplacementTemplate' => 'error.tpl',
             'templateVariables' => array(
@@ -1078,6 +1098,10 @@ function Scaleway_ClientArea(array $params)
             $Is_Running = -1;
         }
 
+        $Available_OS = "";
+        foreach (getOSList($params["pid"]) as $OS_Item) {
+            $Available_OS .= "<option>" . $OS_Item . "</option>" . PHP_EOL; 
+        }
 
         $Return = array('templateVariables' => array(
                                                     'Action_Result' => $ClientAction,
@@ -1100,6 +1124,8 @@ function Scaleway_ClientArea(array $params)
                                                     'Modification_Date' => $ScalewayServer->modification_date,
                                                     'Location' => $Location,
                                                     'Security_Group' => $ScalewayServer->security_group,
+
+                                                    'Available_OS' => $Available_OS,
 
 
                                                     'Is_Running' => $Is_Running,
@@ -1133,19 +1159,43 @@ function Scaleway_ClientArea(array $params)
 //  ██║╚██╔╝██║██║╚════██║██║     
 //  ██║ ╚═╝ ██║██║███████║╚██████╗
 //  ╚═╝     ╚═╝╚═╝╚══════╝ ╚═════╝
+
+/**
+ * Check if a given string is a valid UUID
+ * 
+ * @param   string  $uuid   The string to check
+ * @return  boolean
+ */
+function isValidUUID ($UUID) {
+    if (!is_string($UUID) || (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $UUID) !== 1)) {
+        return false;
+    }
+    return true;
+}
+
+
 function getOSList($PID)
 {
-    $Query = Capsule::table('tblcustomfields')
+
+    $Query_Result = Capsule::table('tblcustomfields')
     ->where('tblcustomfields.fieldname',"Operating System")
-    ->where('tblcustomfields.relid', $pid)
+    ->where('tblcustomfields.relid', $PID)
     ->select('fieldoptions')
     ->get();
 
-    if (empty($Query)) {
-        return;
+
+    $RequestLog = "PID: " . $PID . PHP_EOL . PHP_EOL;
+    $RequestLog .= "Query_Result: " . PHP_EOL . print_r($Query_Result, true);
+
+    if (!empty($Query_Result)) {
+        $Return = explode(",", $Query_Result[0]->fieldoptions);
     } else {
-        return explode(",", $Query["fieldoptions"]);
+        $Return[0] = "Unable to get OS List";
     }
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
+
+    return $Return;
 }
 
 function customAction(array $params)
@@ -1156,8 +1206,7 @@ function customAction(array $params)
     $ServerID = $params["customfields"]["Server ID"];
     $Location = $params["customfields"]["Location"];
 
-    $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location);
-    $ScalewayServer->setServerId($ServerID);
+    $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
 
     $Return = "ERROR: No valid action.";
@@ -1192,8 +1241,10 @@ function customAction(array $params)
             default:
                 $Return = "ERROR: Invalid Power action.";
         }
+
     } elseif(!empty($_POST["OS-Install"])) {
         $Return = $_POST["OS-Install"];
+
     } elseif(!empty($_POST["New-Hostname"])) {
         $New_Hostname = $_POST["New-Hostname"];
         if (empty($New_Hostname)) {
@@ -1215,6 +1266,52 @@ function customAction(array $params)
     }
 
 
+
+    return $Return;
+}
+
+function str_Switch_OS(array $params, $New_Image_Name)
+{
+    $Token = $params["configoption1"];
+    $OrgID = $params["configoption2"];
+    $ServerID = $params["customfields"]["Server ID"];
+    $Location = $params["customfields"]["Location"];
+    $New_Volume = $params["customfields"]["New Volume"];
+    $Return = "Success";
+
+    if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
+        $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
+
+        if (!$ScalewayServer->retrieveDetails()) {
+            $Return = "ERROR retrieveDetails(): " . $ScalewayServer->queryInfo;
+            goto Abort;
+        }
+
+        if (!empty($New_Volume)) {
+            $Return = "ERROR: OS Installation is in progress.";
+            goto Abort;
+        }
+
+        if ($ScalewayServer->archive_server()) {
+
+            $LocalAPI_Data["serviceid"] = $params["serviceid"];
+            $LocalAPI_Data["customfields"] = base64_encode(serialize(array("New Volume"=> "DAGADG" )));
+            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+
+            $Return = "success";
+        } else {
+            $Return = "ERROR archive_server(): " . $ScalewayServer->queryInfo;
+            goto Abort;
+        }
+
+    } else {
+        $Return = "ERROR: Invalid function request";
+        goto Abort;
+    }
+
+    Abort:
+
+    logModuleCall('Scaleway', __FUNCTION__, $RequestLog, print_r($Return, true)) ;
 
     return $Return;
 }
