@@ -18,26 +18,126 @@ use WHMCS\Database\Capsule;
 //  ██║  ██║██║     ██║    ╚██████╗██║  ██║███████╗███████╗███████║
 //  ╚═╝  ╚═╝╚═╝     ╚═╝     ╚═════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
 
+// This class making contact directly to Scaleway and return array with "ERROR" containing translated error
+// message and "DATA" containing the actual respond from backend.
+// Don't use this class directly, it's only meant to be use by ScalewayServer class
+
 class ScalewayAPI
 {
+
+    //  ██████╗ ██████╗ ██╗██╗   ██╗ █████╗ ████████╗███████╗███████╗
+    //  ██╔══██╗██╔══██╗██║██║   ██║██╔══██╗╚══██╔══╝██╔════╝██╔════╝
+    //  ██████╔╝██████╔╝██║██║   ██║███████║   ██║   █████╗  ███████╗
+    //  ██╔═══╝ ██╔══██╗██║╚██╗ ██╔╝██╔══██║   ██║   ██╔══╝  ╚════██║
+    //  ██║     ██║  ██║██║ ╚████╔╝ ██║  ██║   ██║   ███████╗███████║
+    //  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚══════╝
+
     private $Token = "";
     private $OrgID = "";
     private $APIURL = "";
 
     // Status codes returned by scaleway
-    public $HTTPStatus =
+    // Notice: Do not put 2XX in here, it will be mistaken as an error
+    // also 5XX has already been handled, don't put it here.
+    private $HTTPStatus =
         [
-            "200" => "Backend - 200: OK.",
-            "201" => "Backend - 201: Created.",
-            "204" => "Backend - 204: No Content.",
-            "400" => "Backend - 400: Bad Request - Missing or invalid parameter.",
-            "401" => "Backend - 401: Auth Error - Invalid Token/Organization_ID.",
-            "402" => "Backend - 402: Request Failed - Parameters were valid but request failed.",
-            "403" => "Backend - 403: Forbidden - Access to resource is prohibited.",
-            "404" => "Backend - 404: Not found - API Failed or object does not exist.",
-            "50x" => "Backend - 50x: Backend on fire."
+            "400" => "400: Bad Request - Missing or invalid parameter.",
+            "401" => "401: Auth Error - Invalid Token/Organization_ID.",
+            "402" => "402: Request Failed - Parameters were valid but request failed.",
+            "403" => "403: Forbidden - Access to resource is prohibited.",
+            "404" => "404: Not found - API Failed or object does not exist."
         ];
-        
+
+    /**
+     * Call Scaleway's API
+     * 
+     * @param   string          $Token              Scaleway account Token Secret Key.
+     * @param   string          $HTTP_Method        HTTP Request method (POST, GET, PATCH, ...).
+     * @param   string          $Endpoint           API Endpoint (/servers, /ips, ...).
+     * @param   string|null     $POST_Data          (optional) Method's Data.
+     * @param   string|null     $POST_Content_Type  (optional) Content Type of Data (application/json, text/plain, ...).
+     * @return  array           ["ERROR"]           Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]            Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    private function Call_Scaleway($Token, $HTTP_Method, $Endpoint, $POST_Data = null, $POST_Content_Type = null)
+    {
+        if(!isValidUUID($Token) || empty($HTTP_Method) || empty($Endpoint)) {
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+
+            $Input_Data .= "Token: " . PHP_EOL . $Token . PHP_EOL . PHP_EOL;
+            $Input_Data .= "HTTP_Method: " . PHP_EOL . $HTTP_Method . PHP_EOL . PHP_EOL;
+            $Input_Data .= "Endpoint: " . PHP_EOL . $Endpoint . PHP_EOL . PHP_EOL;
+
+        } else {
+
+            if ($POST_Content_Type != "") {
+                $POST_Content_Type = "Content-Type: " . $POST_Content_Type;
+            }
+
+            $CURL_Header = array(
+                "X-Auth-Token: " . $Token,
+                $POST_Content_Type
+            );
+
+            $CURL = curl_init();
+            curl_setopt($CURL, CURLOPT_URL, $this->APIURL . $Endpoint);
+            curl_setopt($CURL, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+            curl_setopt($CURL, CURLOPT_POST, true);
+            curl_setopt($CURL, CURLOPT_CUSTOMREQUEST, $HTTP_Method);
+            curl_setopt($CURL, CURLOPT_POSTFIELDS, $POST_Data);
+
+            curl_setopt($CURL, CURLOPT_HTTPHEADER, $CURL_Header);
+            curl_setopt($CURL, CURLOPT_RETURNTRANSFER, true);
+
+            $CURL_Reply = curl_exec($CURL);
+            $CURL_Reply_Code = curl_getinfo($CURL, CURLINFO_HTTP_CODE);
+
+            curl_close($CURL);
+
+            if (empty($CURL_Reply_Code)) {
+                $Return_ERROR = "Failed while connecting to backend!";
+            } elseif ($CURL_Reply_Code >= 200 && $CURL_Reply_Code <= 299) {
+                $Return_ERROR = "";
+            } elseif (in_array($CURL_Reply_Code, $this->HTTPStatus, true)) {
+                $Return_ERROR = $this->HTTPStatus[$CURL_Reply_Code];
+            } elseif ($CURL_Reply_Code >= 500 && $CURL_Reply_Code <= 599) {
+                $Return_ERROR = $CURL_Reply_Code . ": Backend is on fire.";
+            } else {
+                $Return_ERROR = $CURL_Reply_Code . ": Unknown status code.";
+            }
+
+            $Return = array(
+                "ERROR" => $Return_ERROR,
+                "DATA" => $CURL_Reply
+            );
+
+            // Logging debug data
+            $Input_Data .= "HEADER: " . PHP_EOL . print_r($CURL_Header, true) . PHP_EOL . PHP_EOL;
+            $Input_Data .= "URL: " . PHP_EOL . $this->APIURL . $Endpoint . PHP_EOL . PHP_EOL;
+            $Input_Data .= "METHOD: " . PHP_EOL . $HTTP_Method . PHP_EOL . PHP_EOL;
+            $Input_Data .= "METHOD DATA: " . PHP_EOL . $POST_Data . PHP_EOL . PHP_EOL;
+            $Input_Data .= "REPLY: " .  PHP_EOL . print_r($CURL_Reply, true) . PHP_EOL . PHP_EOL;
+
+        }
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+
+        return $Return;
+    }
+    
+
+
+    //  ██████╗ ██╗   ██╗██████╗ ██╗     ██╗ ██████╗███████╗
+    //  ██╔══██╗██║   ██║██╔══██╗██║     ██║██╔════╝██╔════╝
+    //  ██████╔╝██║   ██║██████╔╝██║     ██║██║     ███████╗
+    //  ██╔═══╝ ██║   ██║██╔══██╗██║     ██║██║     ╚════██║
+    //  ██║     ╚██████╔╝██████╔╝███████╗██║╚██████╗███████║
+    //  ╚═╝      ╚═════╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝╚══════╝
 
     public $CommercialTypes =
         [
@@ -67,79 +167,13 @@ class ScalewayAPI
                 ],
         ];
 
-
-    //  ██████╗ ██████╗ ██╗██╗   ██╗ █████╗ ████████╗███████╗███████╗
-    //  ██╔══██╗██╔══██╗██║██║   ██║██╔══██╗╚══██╔══╝██╔════╝██╔════╝
-    //  ██████╔╝██████╔╝██║██║   ██║███████║   ██║   █████╗  ███████╗
-    //  ██╔═══╝ ██╔══██╗██║╚██╗ ██╔╝██╔══██║   ██║   ██╔══╝  ╚════██║
-    //  ██║     ██║  ██║██║ ╚████╔╝ ██║  ██║   ██║   ███████╗███████║
-    //  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚══════╝
-
-    //This is function used to call Scaleway API
-    private function Call_Scaleway($Token, $HTTP_Method, $Endpoint, $POST_Data = "", $POST_Content_Type = "")
-    {
-        if($POST_Content_Type != "")
-        {
-            $POST_Content_Type = "Content-Type: " . $POST_Content_Type;
-
-        }
-
-
-        $CURL = curl_init();
-        curl_setopt($CURL, CURLOPT_URL, $this->APIURL . $Endpoint);
-        curl_setopt($CURL, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-
-        curl_setopt($CURL, CURLOPT_POST, true);
-        curl_setopt($CURL, CURLOPT_CUSTOMREQUEST, $HTTP_Method);
-        curl_setopt($CURL, CURLOPT_POSTFIELDS, $POST_Data);
-        
-
-        $CURL_Header =
-            [
-                "X-Auth-Token: " . $Token,
-                $POST_Content_Type
-            ];
-        curl_setopt($CURL, CURLOPT_HTTPHEADER, $CURL_Header);
-        curl_setopt($CURL, CURLOPT_RETURNTRANSFER, true);
-
-
-        $CURL_Reply = curl_exec($CURL);
-        $CURL_Reply_Code = curl_getinfo($CURL, CURLINFO_HTTP_CODE);
-
-        curl_close($CURL);
-
-        if ($CURL_Reply_Code == "") {
-            $CURL_Reply = json_encode(array("message" => "CURL to Backend FAILED!"), JSON_PRETTY_PRINT);
-        }
-
-        $Return = array(
-            "STATUS" => $CURL_Reply_Code,
-            "json" => $CURL_Reply
-        );
-
-        // Logging debug data
-        $Debug_Data .= "HEADER: " . json_encode($CURL_Header, JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
-        $Debug_Data .= "URL: " . $this->APIURL . $Endpoint . PHP_EOL . PHP_EOL;
-        $Debug_Data .= "METHOD: " . $HTTP_Method . PHP_EOL . PHP_EOL;
-        $Debug_Data .= "METHOD DATA: " . $POST_Data . PHP_EOL . PHP_EOL;
-        $Debug_Data .= "REPLY: " . json_encode(json_decode($CURL_Reply), JSON_PRETTY_PRINT) . PHP_EOL . PHP_EOL;
-
-        logModuleCall('Scaleway', __FUNCTION__, $Debug_Data, print_r($Return, true));
-
-        //Return an arry with HTTP_CODE returned and the JSON content writen by server.
-        return $Return;
-    }
-    
-
-
-    //  ██████╗ ██╗   ██╗██████╗ ██╗     ██╗ ██████╗███████╗
-    //  ██╔══██╗██║   ██║██╔══██╗██║     ██║██╔════╝██╔════╝
-    //  ██████╔╝██║   ██║██████╔╝██║     ██║██║     ███████╗
-    //  ██╔═══╝ ██║   ██║██╔══██╗██║     ██║██║     ╚════██║
-    //  ██║     ╚██████╔╝██████╔╝███████╗██║╚██████╗███████║
-    //  ╚═╝      ╚═════╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝╚══════╝
-
-
+    /**
+     * Class Initialize
+     * 
+     * @param   string          $Token      Scaleway account Token Secret Key.
+     * @param   string          $OrgID      Scaleway account Organization ID.
+     * @param   string          $Location   Region (Paris, Amsterdam).
+     */
     public function __construct($Token, $OrgID, $Location)
     {
         $this->Token = $Token;
@@ -154,255 +188,489 @@ class ScalewayAPI
         $this->APIURL = "https://cp-" . $Locations[$Location] . ".scaleway.com";
     }
 
+    //   __     __          _                                 __  ____                                  _               _
+    //   \ \   / /   ___   | |  _   _   _ __ ___     ___     / / / ___|   _ __     __ _   _ __    ___  | |__     ___   | |_
+    //    \ \ / /   / _ \  | | | | | | | '_ ` _ \   / _ \   / /  \___ \  | '_ \   / _` | | '_ \  / __| | '_ \   / _ \  | __|
+    //     \ V /   | (_) | | | | |_| | | | | | | | |  __/  / /    ___) | | | | | | (_| | | |_) | \__ \ | | | | | (_) | | |_ 
+    //      \_/     \___/  |_|  \__,_| |_| |_| |_|  \___| /_/    |____/  |_| |_|  \__,_| | .__/  |___/ |_| |_|  \___/   \__|
+    //                                                                                   |_|
 
-    // Modify Cloud-init data
-    public function Modify_Cloudinit($Data, $ServerID)
+    /**
+     * Delete a Volume
+     * 
+     * @param   string          $Volume_UUID    Volume's UUID.
+     * @return  array           ["ERROR"]       Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]        Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_Delete_Volume($Volume_UUID)
     {
-        $http_method = "PATCH";
-        $Endpoint = "/servers/" . $ServerID . "/user_data/cloud-init";
-        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, $Data, "text/plain");
-
-        logModuleCall('Scaleway', __FUNCTION__, 'ServerID:' . PHP_EOL . $ServerID . PHP_EOL . PHP_EOL . "Data:" . PHP_EOL . print_r($Data, true) , print_r($Return, true));
-        return $Return;
-    }
-
-    public function Modify_Hostname( $ServerID, $New_Hostname)
-    {
-        $http_method = "PATCH";
-        $Endpoint = "/servers/" . $ServerID ;
-        $Data = array("name" => $New_Hostname);
-        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($Data, JSON_PRETTY_PRINT), "application/json");
-
-        logModuleCall('Scaleway', __FUNCTION__, 'ServerID:' . PHP_EOL . $ServerID . PHP_EOL . PHP_EOL . "Data:" . PHP_EOL . print_r($Data, true) , print_r($Return, true));
-        return $Return;
-    }
-
-
-    public function modify_ip_ptr($IP_ID, $PTR = "")
-    {
-
-        $Endpoint = "/ips/" . $IP_ID;
-
-        // Detach IP
-        $Data = array(
-            "reverse" => empty($PTR) ? "customer.jiffy.host" : $PTR
-        );
-
-        $http_method = "PATCH";
-        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($Data, JSON_PRETTY_PRINT), "application/json");
-
-        return $Return;
-    }
-
-    public function create_reserved_ip()
-    {
-        $http_method = "POST";
-        $Endpoint = "/ips" ;
-        $Data = json_encode(array("organization" => $this->OrgID), JSON_PRETTY_PRINT);
-        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, $Data, "application/json");
-        return $Return;
-    }
-
-    public function delete_ip_address($ip_id)
-    {
-        $Endpoint = "/ips/" . $ip_id;
-
-        // Detach IP
-        $Data = array(
-            "server" => NULL
-        );
-
-        $http_method = "PATCH";
-        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($Data, JSON_PRETTY_PRINT), "application/json");
-
-        // Failed to detatch, IDK
-        if($result["STATUS"] != 200)
-        {
-            return $result;
+        if(!isValidUUID($Volume_UUID)){
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/volumes/" . $Volume_UUID;
+            $Return = $this->Call_Scaleway($this->Token, "DELETE", $Endpoint);
         }
 
-        // Delete IP
-        $http_method = "DELETE";
-        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
-        return $result;
-    }
+        $Input_Data .= "Volume_UUID:"  . PHP_EOL . $Volume_UUID;
 
-    //Delete a volume by it's id
-    public function delete_volume($VolumeID)
-    {
-        $Endpoint = "/volumes/" . $VolumeID;
-        $Result = $this->Call_Scaleway($this->Token, "DELETE", $Endpoint);
-        return $Result;
-    }
+        $Output_Data = print_r($Return, true);
 
-    //Function to instantiate a new server
-    public function create_new_server($ServerName, $OS_ImageID, $CommercialType, $tags, $ServerPassword)
-    {
-        $http_method = "POST";
-        $Endpoint = "/servers";
-
-        // GB to Bytes and substitute the rootfs Snapshot size (25GB)
-        $ExtraVolumeSizes = ($this->CommercialTypes[$CommercialType]["Disk"] * 1000000000) - 25000000000;
-
-        // Initilize empty Volume array
-        $VolumesArray = array();
-
-        // Add RootFS Snapshot volume
-        array_push($VolumesArray, [
-            "base_snapshot" => $OS_ImageID,
-            "name" => $ServerName . "-rootfs",
-            "volume_type" => "l_ssd",
-            "organization" => $this->OrgID
-        ]);
-        
-        // Scaleway don't allow a single volume to have over 150GB, this will be an issue with START1-L
-        $MaxAllowedSize = 150000000000;
-        $TotalCreatedVolumeCount = 0;
-        
-        // Create AdditionalVolumeArray contain an array of volumes depend on required maximum size
-        while ($ExtraVolumeSizes) {
-            if ($ExtraVolumeSizes > $MaxAllowedSize) {
-                // Force create a volume 150GB
-                $NewVolumeSize = $MaxAllowedSize;
-            } else {
-                // Proceed to create the required volume size
-                $NewVolumeSize = $ExtraVolumeSizes;
-            }
-        
-            $AdditionalVolumeArray[$TotalCreatedVolumeCount] =
-            [
-                "name" => $ServerName . "-extra-" . $TotalCreatedVolumeCount,
-                "volume_type" => "l_ssd",
-                "size" => $NewVolumeSize,
-                "organization" => $this->OrgID
-            ];
-
-            // Count how many volumes has been created
-            $TotalCreatedVolumeCount++;
-
-            // Substitute the Volume has created
-            $ExtraVolumeSizes = $ExtraVolumeSizes - $NewVolumeSize;
-        }
-
-        // Push each created volumes into VolumesArrayObj
-        for ($i = 0; $i < $TotalCreatedVolumeCount; $i++)
-        {
-            array_push($VolumesArray, $AdditionalVolumeArray[$i]);
-        }
-
-        $NewIP_ID = json_decode($this->create_reserved_ip()["json"], true)["ip"]["id"];
-        $this->modify_ip_ptr($NewIP_ID);
-
-        $POST_Data =
-        [
-            "organization" => $this->OrgID,
-            "name"         => $ServerName,
-            "commercial_type" => $CommercialType,
-            "tags"         => $tags,
-            "boot_type"  => "local",
-            "public_ip" => $NewIP_ID,
-            "enable_ipv6" => true,
-            "volumes"      =>  (object) $VolumesArray
-        ];
-
-
-        $server_creation_result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint, json_encode($POST_Data, JSON_PRETTY_PRINT), "application/json");
-
-        $srv_id = json_decode($server_creation_result["json"], true)["server"]["id"];
-
-
-        // Set User:Pass to Cloudinit data
-        $this->Modify_Cloudinit($ServerPassword, $srv_id);
-        
-        // Power ON server
-        $this->server_action($srv_id, "poweron" );
-
-
-        return $server_creation_result;
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
     }
 
     /**
      * Create a new Scaleway Volume from Snapshot UUID
      * 
-     * @param   string  $Snapshot_UUID      UUID of Snapshot to create Volume from
-     * @param   string  $New_Volume_Name    Name of the newly created Volume
-     * @return  array   ["STATUS"]          Integer of Replied HTTP code
-     * @return  array   ["json"]            JSON data from backend
+     * @param   string  $Snapshot_UUID      UUID of existing Snapshot to create a Volume from.
+     * @param   string  $New_Volume_Name    Name of the newly created Volume.
+     * @return  array                       Returned data from Call_Scaleway().
      */
-    public function Volume_from_Snapshot($Snapshot_UUID, $New_Volume_Name)
+    public function Scw_Volume_from_Snapshot($Snapshot_UUID, $New_Volume_Name)
     {
-        $Return = array(
-            "STATUS" => -1,
-            "json" => ""
-        )
 
         if(!isValidUUID($Snapshot_UUID) || !is_string($New_Volume_Name) || empty($New_Volume_Name))
         {
-
-        }
-
-        // Return Error when ServerID is invalid.
-        if ($ServerID == "" || strpos($ServerID, "TERMINATED") !== false) {
-            return array(
-                "STATUS" => "400",
-                "json" => "{\"error\" : \"Invalid ServerID\"}"
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
             );
+        } else {
+            $Endpoint = "/volumes";
+            $Data = array(
+              "base_snapshot"   => $Snapshot_UUID,
+              "name"            => $New_Volume_Name,
+              "organization"    => $this->OrgID,
+              "volume_type"     => "l_ssd"
+            );
+            $Data = json_encode($Data, JSON_PRETTY_PRINT);
+            $Return = $this->Call_Scaleway($this->Token, "GET", $Endpoint);
         }
-        $http_method = "GET";
-        $Endpoint = "/servers/" . $ServerID;
-        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
-        return $result;
+
+        $Input_Data .= "Snapshot_UUID:"     . PHP_EOL . $Snapshot_UUID      . PHP_EOL . PHP_EOL;
+        $Input_Data .= "New_Volume_Name:"   . PHP_EOL . $New_Volume_Name    . PHP_EOL . PHP_EOL;
+
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
     }
 
-    //Function which return server info
-    public function retrieve_server_info($ServerID)
+    /**
+     * Retrieve List of Snapshot, including their info
+     * 
+     * @return  array                   Returned data from Call_Scaleway().
+     */
+    public function Scw_Retrieve_Snapshots()
     {
-        // Return Error when ServerID is invalid.
-        if ($ServerID == "" || strpos($ServerID, "TERMINATED") !== false) {
-            return array(
-                "STATUS" => "400",
-                "json" => "{\"error\" : \"Invalid ServerID\"}"
-            );
-        }
-        $http_method = "GET";
-        $Endpoint = "/servers/" . $ServerID;
-        $result = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
-        return $result;
-    }
-
-    public function retrieve_snapshots()
-    {
-        $http_method = "GET";
         $Endpoint = "/snapshots";
-        
-        $Return = $this->Call_Scaleway($this->Token, $http_method, $Endpoint);
+        $Return = $this->Call_Scaleway($this->Token, "GET", $Endpoint);
 
-        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]', print_r($Return, true));
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, "", $Output_Data);
+        return $Return;
+    }
+
+    //    ____
+    //   / ___|    ___   _ __  __   __   ___   _ __
+    //   \___ \   / _ \ | '__| \ \ / /  / _ \ | '__|
+    //    ___) | |  __/ | |     \ V /  |  __/ | |
+    //   |____/   \___| |_|      \_/    \___| |_|
+
+    /**
+     * Create a new Scaleway Server
+     * 
+     * @param   string  $Server_Hostname    Hostname (server name) of the new server.
+     * @param   string  $Snapshot_UUID      UUID of existing Snapshot to create a Server from.
+     * @param   string  $CommercialType     Server CommercialType.
+     * @param   string  $Tags               1 dimmension array of Tags.
+     * @param   string  $Server_Username    New server's SSH Username.
+     * @param   string  $Server_Password    New server's SSH Password.
+     * @return  array                       Returned data from Call_Scaleway().
+     */
+    public function Scw_Create_New_Server($Server_Hostname, $Snapshot_UUID, $CommercialType, $Tags, $Server_Username, $Server_Password)
+    {
+        if(empty($Server_Hostname) || !isValidUUID($Snapshot_UUID) || !array_key_exists($CommercialType, $this->CommercialTypes) || empty($Tags) || empty($Server_Username) || empty($Server_Password)){
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+            $Log_Stage = "Validation";
+        } else {
+
+            ////////////////////////
+            // Volume calculation //
+            ////////////////////////
+
+            // Get bytes of needed extra volumes by get the required Server Disk size then substitute the RootFS_Volume (25GB)
+            $ExtraVolumeSizes = ($this->CommercialTypes[$CommercialType]["Disk"] * 1000000000) - 25000000000;
+
+            // Initilize empty Volume array
+            $VolumesArray = array();
+
+            // RootFS_Volume is the one cloned from Snapshot
+            $RootFS_Volume = array(
+                "base_snapshot" => $Snapshot_UUID,
+                "name" => $Server_Hostname . "-rootfs",
+                "volume_type" => "l_ssd",
+                "organization" => $this->OrgID
+            );
+
+            // Push RootFS_Volume into VolumesArray
+            array_push($VolumesArray, $RootFS_Volume);
+            
+            // Scaleway don't allow a single volume to have over 150GB, this will be an issue with START1-L
+            $MaxAllowedSize = 150000000000;
+            $TotalCreatedVolumeCount = 0;
+            
+            // Create AdditionalVolumeArray contain an array of volumes depend on required maximum size
+            while ($ExtraVolumeSizes) {
+                if ($ExtraVolumeSizes > $MaxAllowedSize) {
+                    // Force create a volume 150GB if the NewVolumeSize is over 150GB
+                    $NewVolumeSize = $MaxAllowedSize;
+                } else {
+                    // Proceed to create the required volume size if otherwise
+                    $NewVolumeSize = $ExtraVolumeSizes;
+                }
+            
+                // JSON of Extra volume(s)
+                $AdditionalVolumeArray[$TotalCreatedVolumeCount] =
+                array(
+                    "name" => $Server_Hostname . "-extra-" . $TotalCreatedVolumeCount,
+                    "volume_type" => "l_ssd",
+                    "size" => $NewVolumeSize,
+                    "organization" => $this->OrgID
+                );
+
+                // Count how many volumes has been created
+                $TotalCreatedVolumeCount++;
+
+                // Substitute the Volume has created
+                $ExtraVolumeSizes = $ExtraVolumeSizes - $NewVolumeSize;
+            }
+
+            // Push each created Extra volume(s) into VolumesArray
+            for ($i = 0; $i < $TotalCreatedVolumeCount; $i++)
+            {
+                array_push($VolumesArray, $AdditionalVolumeArray[$i]);
+            }
+
+
+            // Reserve an IP address
+            $Return = $this->Scw_New_Reserved_IP();
+
+            // Abort if failed
+            $Log_Stage = "Scw_New_Reserved_IP";
+            if(empty($Return["ERROR"])) {
+
+                $Reserved_IP_UUID = json_decode($Return["DATA"], true)["ip"]["id"];
+
+                // Modify PTR of Reserved IP
+                $Return = $this->Scw_Modify_IP_PTR($Reserved_IP_UUID, "customer.jiffy.host");
+
+                // Abort if failed
+                $Log_Stage = "Scw_Modify_IP_PTR";
+                if (empty($Return["ERROR"])) {
+
+                    // Finally create the server
+                    $Data =
+                    array(
+                        "organization"      => $this->OrgID,
+                        "name"              => $Server_Hostname,
+                        "commercial_type"   => $CommercialType,
+                        "tags"              => $Tags,
+                        "boot_type"         => "local",
+                        "public_ip"         => $Reserved_IP_UUID,
+                        "enable_ipv6"       => true,
+                        "volumes"           =>  (object) $VolumesArray
+                    );
+        
+        
+                    $Endpoint = "/servers";
+                    $Data = json_encode($Data, JSON_PRETTY_PRINT);
+                    $Return = $this->Call_Scaleway($this->Token, "POST", $Endpoint, $Data, "application/json");
+
+                    // Abort if failed
+                    $Log_Stage = "Scw_Create_New_Server";
+                    if (empty($Return["ERROR"])) {
+                        $Server_UUID = json_decode($Return["DATA"], true)["server"]["id"];
+            
+                        // Set User:Pass to CloudInit data, there will be a script running on first boot to do the password setup
+                        $Temp_Return = $this->Scw_Modify_CloudInit($Server_UUID, $Server_Username . ":" . $Server_Password);
+
+                        // Abort if failed
+                        $Log_Stage = "Scw_Modify_CloudInit";
+                        if (empty($Temp_Return["ERROR"])) {
+
+                            // Power ON server
+                            $Temp_Return = $this->Scw_Server_Action($Server_UUID, "poweron");
+
+                            $Log_Stage = "Scw_Server_Action";
+                            if (!empty($Temp_Return["ERROR"])) {
+                                $Return = $Temp_Return;
+                            }
+
+                        } else {
+                            $Return = $Temp_Return;
+                        }
+                    }
+                }
+            }
+        }
+
+        $Input_Data .= "Server_Hostname:"   . PHP_EOL . $Server_Hostname        . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Snapshot_UUID:"     . PHP_EOL . $Snapshot_UUID          . PHP_EOL . PHP_EOL;
+        $Input_Data .= "CommercialType:"    . PHP_EOL . $CommercialType         . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Tags:"              . PHP_EOL . print_r($Tags, true)    . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Server_Username:"   . PHP_EOL . $Server_Username        . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Server_Password:"   . PHP_EOL . $Server_Password        . PHP_EOL . PHP_EOL;
+
+        $Output_Data = "Stage: " . $Log_Stage . PHP_EOL . PHP_EOL . print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
+    }
+
+    /**
+     * Do server action
+     * 
+     * @param   string  $Server_UUID    UUID of existing Server.
+     * @param   string  $Action         Action to do on server, only allow "poweron", "stop_in_place", "reboot", "poweroff", "terminate".
+     * @return  array                   Returned data from Call_Scaleway().
+     */
+    public function Scw_Server_Action($Server_UUID, $Action)
+    {
+        $Allowed_Action = array(
+            "poweron", "stop_in_place", "reboot", "poweroff", "terminate"
+        );
+
+        if(!isValidUUID($Server_UUID) || !in_array($Action, $Allowed_Action, true) || empty($Action))
+        {
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/servers/" . $Server_UUID . "/action";
+            $Data = array(
+                "action" => $Action
+            );
+            $Data = json_encode($Data, JSON_PRETTY_PRINT);
+            $Return = $this->Call_Scaleway($this->Token, "POST", $Endpoint, $Data, "application/json");
+        }
+        return $Return;
+    }
+
+    /**
+     * Retrieve server info
+     * 
+     * @param   string  $Server_UUID    UUID of existing Server.
+     * @return  array                   Returned data from Call_Scaleway().
+     */
+    public function Scw_Retrieve_Server_Info($Server_UUID)
+    {
+        if(!isValidUUID($Server_UUID))
+        {
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/servers/" . $Server_UUID;
+            $Return = $this->Call_Scaleway($this->Token, "GET", $Endpoint);
+        }
+
+        $Input_Data .= "Server_UUID:"   . PHP_EOL . $Server_UUID;
+
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
+    }
+
+    /**
+     * Modify Server's Hostname
+     * 
+     * @param   string          $Server_UUID    Server UUID.
+     * @param   string          $Hostname       New hostname (server name).
+     * @return  array           ["ERROR"]       Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]        Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_Modify_Hostname($Server_UUID, $Hostname)
+    {
+        if(!isValidUUID($Server_UUID) || empty($Hostname)) {
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/servers/" . $Server_UUID ;
+            $Data = array("name" => $Hostname);
+            $Data = json_encode($Data, JSON_PRETTY_PRINT);
+            $Return = $this->Call_Scaleway($this->Token, "PATCH", $Endpoint, $Data, "application/json");
+        }
+
+        $Input_Data .= "Server_UUID:" . PHP_EOL . $Server_UUID . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Hostname:" . PHP_EOL . $Hostname;
+
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
+    }
+
+    /**
+     * Modify Server's CloudInit
+     * 
+     * @param   string          $Server_UUID    Server UUID.
+     * @param   string          $Data|null      CloudInit Data in plain text, leave empty to delete CloudInit Data.
+     * @return  array           ["ERROR"]       Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]        Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_Modify_CloudInit($Server_UUID, $Data = null)
+    {
+        if(!isValidUUID($Server_UUID)) {
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/servers/" . $Server_UUID . "/user_data/cloud-init";
+            $Return = $this->Call_Scaleway($this->Token, "PATCH", $Endpoint, $Data, "text/plain");
+        }
+
+        $Input_Data .= "Server_UUID:"   . PHP_EOL . $Server_UUID . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Data:"          . PHP_EOL . $Data;
+
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
         return $Return;
     }
 
 
+    //    ___   ____         _          _       _                           
+    //   |_ _| |  _ \       / \      __| |   __| |  _ __    ___   ___   ___ 
+    //    | |  | |_) |     / _ \    / _` |  / _` | | '__|  / _ \ / __| / __|
+    //    | |  |  __/     / ___ \  | (_| | | (_| | | |    |  __/ \__ \ \__ \
+    //   |___| |_|       /_/   \_\  \__,_|  \__,_| |_|     \___| |___/ |___/
 
-    //Server actions are: power on, stop_in_place, reboot
-    public function server_action( $ServerID, $Action)
+    /**
+     * Modify IP's PTR
+     * 
+     * @param   string          $IP_UUID    IP address UUID.
+     * @param   string          $PTR|null   New PTR (must be resolvable).
+     * @return  array           ["ERROR"]   Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]    Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_Modify_IP_PTR($IP_UUID, $PTR = null)
     {
-        if ($Action != "poweron" && $Action != "stop_in_place" && $Action != "reboot" && $Action != "terminate" && $Action !="poweroff") {
-            return array(
-                    "STATUS" => "400",
-                    "json" => "{\"error\" : \"Invalid Action\"}"
-                );
+        if(!isValidUUID($IP_UUID)){
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/ips/" . $IP_UUID;
+            $Data = array(
+                "reverse" => $PTR
+            );
+            $Data = json_encode($Data, JSON_PRETTY_PRINT);
+            $Return = $this->Call_Scaleway($this->Token, "PATCH", $Endpoint, $Data, "application/json");
         }
 
+        $Input_Data .= "IP_UUID:"  . PHP_EOL . $IP_UUID . PHP_EOL . PHP_EOL;
+        $Input_Data .= "PTR:"      . PHP_EOL . $PTR;
 
-        $HTTP_Method = "POST";
-        $Endpoint = "/servers/" . $ServerID . "/action";
-        $POST_Data =
-            [
-                "action" => $Action
-            ];
-        
-        return $this->Call_Scaleway($this->Token, $HTTP_Method, $Endpoint, json_encode($POST_Data, JSON_PRETTY_PRINT), "application/json" );
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
     }
+    
+    /**
+     * Reserve a new IP address
+     * 
+     * @return  array           ["ERROR"]   Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]    Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_New_Reserved_IP()
+    {
+        $Endpoint = "/ips" ;
+        $Data = array("organization" => $this->OrgID);
+        $Data = json_encode($Data, JSON_PRETTY_PRINT);
+        $Return = $this->Call_Scaleway($this->Token, "POST", $Endpoint, $Data, "application/json");
+
+        $Output_Data = print_r($Return, true);
+        logModuleCall('Scaleway', __FUNCTION__, "", $Output_Data);
+
+        return $Return;
+    }
+
+    /**
+     * Attach/Detach a reserved IP Address to a Server
+     * 
+     * @param   string          $IP_UUID            IP address UUID.
+     * @param   string          $Server_UUID|null   Server UUID you want the IP to be attached (NULL for detatch the IP)
+     * @return  array           ["ERROR"]           Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]            Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_Attach_Reserved_IP($IP_UUID, $Server_UUID = null)
+    {
+        if(!isValidUUID($IP_UUID) || ($Server_UUID != null && !isValidUUID($Server_UUID))){
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/ips/" . $IP_UUID;
+            $Data = array(
+                "server" => $Server_UUID
+            );
+            $Data = json_encode($Data, JSON_PRETTY_PRINT);
+            $Return = $this->Call_Scaleway($this->Token, "PATCH", $Endpoint, $Data, "application/json");
+        }
+
+        $Input_Data .= "IP_UUID:"      . PHP_EOL . $IP_UUID . PHP_EOL . PHP_EOL;
+        $Input_Data .= "Server_UUID:"  . PHP_EOL . $Server_UUID;
+
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
+    }
+
+    /**
+     * Delete a reserved IP Address
+     * 
+     * @param   string          $IP_UUID    IP address UUID.
+     * @return  array           ["ERROR"]   Backend's ERROR message, translated from respond code.
+     * @return  array           ["DATA"]    Actual Respond Data from backend, usually JSON encoded or empty.
+     */
+    public function Scw_Delete_Reserved_IP($IP_UUID)
+    {
+        if(!isValidUUID($IP_UUID)){
+            $Return = array(
+                "ERROR" => "Input data is invalid",
+                "DATA" => ""
+            );
+        } else {
+            $Endpoint = "/ips/" . $IP_UUID;
+            $Return = $this->Call_Scaleway($this->Token, "DELETE", $Endpoint);
+        }
+
+        $Input_Data .= "IP_UUID:"  . PHP_EOL . $IP_UUID;
+
+        $Output_Data = print_r($Return, true);
+
+        logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
+        return $Return;
+    }
+
 }
 
 
@@ -461,160 +729,212 @@ class ScalewayServer
 
     public function retrieveDetails()
     {
-        $serverInfoResp = $this->ScwAPI->retrieve_server_info($this->ServerID);
-        if ($serverInfoResp["STATUS"] == 200) {
-            $serverInfoResp = json_decode($serverInfoResp["json"], true);
-            $serverInfoResp = $serverInfoResp["server"];
+        $API_Request = $this->ScwAPI->Scw_Retrieve_Server_Info($this->ServerID);
+
+        if (empty($API_Request["ERROR"])) {
+            $API_Request = json_decode($API_Request["DATA"], true);
+            $API_Request = $API_Request["server"];
 
             // Remove ServerPrefix from name
-            $this->hostname = substr($serverInfoResp["hostname"], strlen($this->ServerPrefix));
+            $this->hostname = substr($API_Request["hostname"], strlen($this->ServerPrefix));
 
-            if ($serverInfoResp["state"] == "stopped in place") {
+            if ($API_Request["state"] == "stopped in place") {
                 $this->state = '<span class="label label-danger">NOT RUNNING</span>';
-            } elseif ($serverInfoResp["state"] == "stopping") {
+            } elseif ($API_Request["state"] == "stopping") {
                 $this->state = '<span class="label label-warning">SHUTTING DOWN</span>';
-            } elseif ($serverInfoResp["state"] == "stopped") {
+            } elseif ($API_Request["state"] == "stopped") {
                 $this->state = '<span class="label label-default">ARCHIVED</span>';
-            } elseif ($serverInfoResp["state"] == "running") {
+            } elseif ($API_Request["state"] == "running") {
                 $this->state = '<span class="label label-success">RUNNING</span>';
-            } elseif ($serverInfoResp["state"] == "starting") {
+            } elseif ($API_Request["state"] == "starting") {
                 $this->state = '<span class="label label-primary">STARTING</span>';
             } else {
-                $this->state = $serverInfoResp["state"];
+                $this->state = $API_Request["state"];
             }
             
-            $this->commercial_type = $serverInfoResp["commercial_type"];
-            $this->tags = $serverInfoResp["tags"];
-            $this->security_group = $serverInfoResp["security_group"]["name"];
-            $this->organization = $serverInfoResp["organization"];
+            $this->commercial_type = $API_Request["commercial_type"];
+            $this->tags = $API_Request["tags"];
+            $this->security_group = $API_Request["security_group"]["name"];
+            $this->organization = $API_Request["organization"];
 
             $this->Info_Disk = $this->ScwAPI->CommercialTypes[$this->commercial_type]["Disk"];
             $this->Info_Core = $this->ScwAPI->CommercialTypes[$this->commercial_type]["Core"];
             $this->Info_RAM = $this->ScwAPI->CommercialTypes[$this->commercial_type]["RAM"];
 
 
-            $this->public_ip["id"] = $serverInfoResp["public_ip"]["id"];
-            $this->public_ip["address"] = $serverInfoResp["public_ip"]["address"];
-            $this->ipv6 = $serverInfoResp["ipv6"]["address"];
-            $this->private_ip = $serverInfoResp["private_ip"];
+            $this->public_ip["id"] = $API_Request["public_ip"]["id"];
+            $this->public_ip["address"] = $API_Request["public_ip"]["address"];
+            $this->ipv6 = $API_Request["ipv6"]["address"];
+            $this->private_ip = $API_Request["private_ip"];
 
-            $this->creation_date = prettyPrintDate($serverInfoResp["creation_date"]);
-            $this->modification_date = prettyPrintDate($serverInfoResp["modification_date"]);
+            $this->creation_date = prettyPrintDate($API_Request["creation_date"]);
+            $this->modification_date = prettyPrintDate($API_Request["modification_date"]);
 
             $this->queryInfo = "Success!";
 
-
-
             $Return = true;
         } else {
-            $this->queryInfo = $this->ScwAPI->HTTPStatus[$serverInfoResp["STATUS"]];
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
             $Return = false;
         }
 
-        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]' . PHP_EOL . PHP_EOL . "serverInfoResp:" . print_r($serverInfoResp, true), $Return);
+        logModuleCall('Scaleway', __FUNCTION__, '[NO INPUT]' . PHP_EOL . PHP_EOL . "API_Request:" . print_r($API_Request, true), $Return);
 
         return $Return;
     }
-    public function create_new_server($Server_Name, $OS_ImageID, $commercial_type, $tags = array(), $ServerPassword)
+
+
+
+    public function create_new_server($Server_Name, $OS_ImageID, $commercial_type, $tags = array(), $Server_Username, $ServerPassword)
     {
-        $createServerResult = $this->ScwAPI->create_new_server( $this->ServerPrefix . $Server_Name, $OS_ImageID, $commercial_type, $tags, $ServerPassword);
-        if ($createServerResult["STATUS"] == 201) {
-            $serverInfo = json_decode($createServerResult["json"], true);
+        $API_Request = $this->ScwAPI->Scw_Create_New_Server( $this->ServerPrefix . $Server_Name, $OS_ImageID, $commercial_type, $tags, $Server_Username, $ServerPassword);
+        if (empty($API_Request["ERROR"])) {
+            $serverInfo = json_decode($API_Request["DATA"], true);
             $serverInfo = $serverInfo["server"];
             $this->ServerID = $serverInfo["id"];
             $this->retrieveDetails();
             return true;
         } else {
-            $this->queryInfo =  $this->ScwAPI->HTTPStatus[$createServerResult["STATUS"]];
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
             return false;
         }
     }
+
+
+
     public function delete_server()
     {
         // Getting the infos before deletion
-        $serverInfoResp = $this->ScwAPI->retrieve_server_info($this->ServerID);
-        $AttachedIP_ID = json_decode($serverInfoResp["json"], true)["server"]["public_ip"]["id"];
+        $API_Request = $this->ScwAPI->Scw_Retrieve_Server_Info($this->ServerID);
+
+        if(!empty($API_Request["ERROR"])){
+            goto Abort;
+        }
+
+        // Getting its reserved IPv4 UUID
+        $AttachedIP_ID = json_decode($API_Request["DATA"], true)["server"]["public_ip"]["id"];
+
+        // Detach its reserved IP
+        $API_Request = $this->ScwAPI->Scw_Attach_Reserved_IP($AttachedIP_ID);
+
+        if(!empty($API_Request["ERROR"])){
+            goto Abort;
+        }
 
         // Delete its reserved IP
-        $this->ScwAPI->delete_ip_address($AttachedIP_ID);
-
-        $deleteServerResponse = $this->ScwAPI->server_action($this->ServerID, "terminate");
-
-        if ($deleteServerResponse["STATUS"] == 202) {
-            return true;
-
-        } else {
-            $this->queryInfo = json_decode($deleteServerResponse["json"], true)["message"];
-            return false;
+        $API_Request = $this->ScwAPI->Scw_Delete_Reserved_IP($AttachedIP_ID);
+    
+        if(!empty($API_Request["ERROR"])){
+            goto Abort;
         }
+
+        $API_Request = $this->ScwAPI->Scw_Server_Action($this->ServerID, "terminate");
+
+        if (empty($API_Request["ERROR"])) {
+            return true;
+        }
+
+        Abort:
+        $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+        $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+        return false;
+        
     }
 
     public function stop_server()
     {
-        $powerofresult = $this->ScwAPI->server_action($this->ServerID, "stop_in_place");
-        if ($powerofresult["STATUS"] == 202) {
+        $API_Request = $this->ScwAPI->Scw_Server_Action($this->ServerID, "stop_in_place");
+        if (empty($API_Request["ERROR"])) {
             $this->retrieveDetails();
             return true;
         } else {
-            $this->queryInfo = json_decode($powerofresult["json"], true)["message"];
-            return false;
-        }
-    }
-    public function poweron_server()
-    {
-        $poweron_result = $this->ScwAPI->server_action($this->ServerID, "poweron");
-        if ($poweron_result["STATUS"] == 202) {
-            $this->retrieveDetails();
-            return true;
-        } else {
-            $this->queryInfo = json_decode($poweron_result["json"], true)["message"];
-            return false;
-        }
-    }
-    public function reboot_server()
-    {
-        $reboot_result = $this->ScwAPI->server_action($this->ServerID, "reboot");
-        if ($reboot_result["STATUS"] == 202) {
-            $this->retrieveDetails();
-            return true;
-        } else {
-            $this->queryInfo = json_decode($reboot_result["json"], true)["message"];
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
             return false;
         }
     }
 
-    public function archive_server()
+
+
+    public function poweron_server()
     {
-        $archive_result = $this->ScwAPI->server_action($this->ServerID, "poweroff");
-        if ($archive_result["STATUS"] == 202) {
+        $API_Request = $this->ScwAPI->Scw_Server_Action($this->ServerID, "poweron");
+        if (empty($API_Request["ERROR"])) {
             $this->retrieveDetails();
             return true;
         } else {
-            $this->queryInfo = json_decode($archive_result["json"], true)["message"];
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+            return false;
+        }
+    }
+
+
+
+
+    public function reboot_server()
+    {
+        $API_Request = $this->ScwAPI->Scw_Server_Action($this->ServerID, "reboot");
+        if (empty($API_Request["ERROR"])) {
+            $this->retrieveDetails();
+            return true;
+        } else {
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+            return false;
+        }
+    }
+
+
+
+    public function archive_server()
+    {
+        $API_Request = $this->ScwAPI->Scw_Server_Action($this->ServerID, "poweroff");
+        if (empty($API_Request["ERROR"])) {
+            $this->retrieveDetails();
+            return true;
+        } else {
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
             return false;
         }
     }
 
     public function retrieve_snapshot_id($snapshot_name)
     {
-        $snapshot_id = "";
 
-        $json = json_decode($this->ScwAPI->retrieve_snapshots()["json"]);
-        foreach ($json->snapshots as $item) {
-            if ($item->name == $snapshot_name) {
-                $snapshot_id= $item->id;
-                break;
+        $API_Request = $this->ScwAPI->Scw_Retrieve_Snapshots();
+        if (empty($API_Request["ERROR"])) {
+
+            $json = json_decode($API_Request["DATA"]);
+            foreach ($json->snapshots as $item) {
+                if ($item->name == $snapshot_name) {
+                    return $item->id;
+                }
             }
+        } else {
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+            return "";
         }
 
-        logModuleCall('Scaleway', __FUNCTION__, $snapshot_name, $snapshot_id);
-
-        return $snapshot_id;
     }
 
     public function Modify_Hostname($New_Hostname)
     {
-        return $this->ScwAPI->Modify_Hostname($this->ServerID, $this->$ServerPrefix . $New_Hostname);
+
+        $API_Request = $this->ScwAPI->Scw_Modify_Hostname($this->ServerID, $this->$ServerPrefix . $New_Hostname);
+        if (empty($API_Request["ERROR"])) {
+            $this->retrieveDetails();
+            return true;
+        } else {
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+            return false;
+        }
+        
     }
 
 }
@@ -704,7 +1024,7 @@ function Scaleway_CreateAccount(array $params)
         $ServerUsername = "root";
         $ServerPassword = md5($params["password"]);
 
-        if ($ScalewayServer->create_new_server($ServerName, $OSImageID, $CommercialType, $ServerTag, $ServerUsername . ":" . $ServerPassword)) {
+        if ($ScalewayServer->create_new_server($ServerName, $OSImageID, $CommercialType, $ServerTag, $ServerUsername , $ServerPassword)) {
 
             $LocalAPI_Data["serviceid"] = $ServiceID;
             $LocalAPI_Data["serviceusername"] = $ServerUsername;
@@ -1069,6 +1389,18 @@ function Scaleway_ClientArea(array $params)
                   "Location: " . $Location . PHP_EOL . PHP_EOL .
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
+    
+    $Service_Status = $params["status"];
+    if($Service_Status != "Active"){
+        $Return = array('tabOverviewReplacementTemplate' => 'error.tpl',
+                        'templateVariables' => array(
+                                                    'usefulErrorHelper' => "Sorry, your service is currently " . $Service_Status,
+                                                    )
+                        );
+        
+        goto Abort;
+    }
+
     if (strlen($Token) == 36 && strlen($OrgID) == 36 && strlen($ServerID) == 36 && $Location != "" ) {
         $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $ServerID);
 
@@ -1141,8 +1473,6 @@ function Scaleway_ClientArea(array $params)
         
         goto Abort;
     }
-
-
 
     Abort:
 
@@ -1250,8 +1580,7 @@ function customAction(array $params)
         if (empty($New_Hostname)) {
             $Return = "ERROR: Invalid hostname.";
         } else {
-            $Action = $ScalewayServer->Modify_Hostname($New_Hostname);
-            if ($Action["STATUS"] == 200){
+            if ($ScalewayServer->Modify_Hostname($New_Hostname)){
                 $LocalAPI_Data["serviceid"] = $params["serviceid"];
                 $LocalAPI_Data["domain"] = $New_Hostname;
                 localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());

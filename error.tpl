@@ -5,4 +5,4 @@
 
 <p>Please go back and try again.</p>
 
-<p>If the problem persists, please contact support.</p>
+<p>If you believe this is an error, please contact support.</p>
