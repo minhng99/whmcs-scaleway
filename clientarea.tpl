@@ -1,4 +1,10 @@
-
+{literal} 
+<script language="javascript">
+if ( window.history.replaceState ) {
+  window.history.replaceState( null, null, window.location.href );
+}
+</script> 
+{/literal}
 {if $Action_Result}
   <hr>
   {if $Action_Result|strstr:"SUCCESS"}
