@@ -6,7 +6,6 @@ if (!defined("WHMCS")) {
 
 use WHMCS\Database\Capsule;
 
-
 //   █████╗ ██████╗ ██╗     ██████╗ █████╗ ██╗     ██╗     ███████╗
 //  ██╔══██╗██╔══██╗██║    ██╔════╝██╔══██╗██║     ██║     ██╔════╝
 //  ███████║██████╔╝██║    ██║     ███████║██║     ██║     ███████╗
@@ -122,7 +121,7 @@ class ScalewayAPI
 
         return $Return;
     }
-    
+
 
 
     //  ██████╗ ██╗   ██╗██████╗ ██╗     ██╗ ██████╗███████╗
@@ -172,13 +171,8 @@ class ScalewayAPI
         $this->Token = $Token;
         $this->OrgID = $OrgID;
 
-        $Locations =
-            [
-                "Paris"     => "par1",
-                "Amsterdam" => "ams1",
-            ];
 
-        $this->APIURL = "https://cp-" . $Locations[$Location] . ".scaleway.com";
+        $this->APIURL = "https://cp-" . $Location . ".scaleway.com";
     }
 
     //   __     __          _                                 __  ____                                  _               _
@@ -313,11 +307,11 @@ class ScalewayAPI
 
             // Push RootFS_Volume into VolumesArray
             array_push($VolumesArray, $RootFS_Volume);
-            
+
             // Scaleway don't allow a single volume to have over 150GB, this will be an issue with START1-L
             $MaxAllowedSize = 150000000000;
             $TotalCreatedVolumeCount = 0;
-            
+
             // Create AdditionalVolumeArray contain an array of volumes depend on required maximum size
             while ($ExtraVolumeSizes) {
                 if ($ExtraVolumeSizes > $MaxAllowedSize) {
@@ -327,7 +321,7 @@ class ScalewayAPI
                     // Proceed to create the required volume size if otherwise
                     $NewVolumeSize = $ExtraVolumeSizes;
                 }
-            
+
                 // JSON of Extra volume(s)
                 $AdditionalVolumeArray[$TotalCreatedVolumeCount] =
                 array(
@@ -361,8 +355,8 @@ class ScalewayAPI
                 "enable_ipv6"       => true,
                 "volumes"           =>  (object) $VolumesArray
             );
-        
-        
+
+
             $Endpoint = "/servers";
             $Data = json_encode($Data, JSON_PRETTY_PRINT);
             $Return = $this->Call_Scaleway($this->Token, "POST", $Endpoint, $Data, "application/json");
@@ -371,7 +365,7 @@ class ScalewayAPI
             $Log_Stage = "Scw_Create_New_Server";
             if (empty($Return["ERROR"])) {
                 $Server_UUID = json_decode($Return["DATA"], true)["server"]["id"];
-        
+
                 // Set User:Pass to CloudInit data, there will be a script running on first boot to do the password setup
                 $Temp_Return = $this->Scw_Modify_CloudInit($Server_UUID, $Server_Username . ":" . $Server_Password);
 
@@ -390,7 +384,6 @@ class ScalewayAPI
                     $Return = $Temp_Return;
                 }
             }
-            
         }
 
         $Input_Data .= "Server_Hostname:"   . PHP_EOL . $Server_Hostname        . PHP_EOL . PHP_EOL;
@@ -603,7 +596,7 @@ class ScalewayAPI
         logModuleCall('Scaleway', __FUNCTION__, $Input_Data, $Output_Data);
         return $Return;
     }
-    
+
     /**
      * Reserve a new IP address
      *
@@ -702,6 +695,11 @@ class ScalewayServer
 {
     protected $ScwAPI = null;
 
+    public $Locations = array(
+        "Paris"     => "par1",
+        "Amsterdam" => "ams1",
+    );
+
     // Hostname prefix, use to identify customer's server on Scaleway's panel
     public $ServerPrefix =  "CUSTOMER-";
 
@@ -762,7 +760,7 @@ class ScalewayServer
      */
     public function __construct($Token, $OrgID, $Location, $Server_UUID = null)
     {
-        $this->ScwAPI = new ScalewayAPI($Token, $OrgID, $Location);
+        $this->ScwAPI = new ScalewayAPI($Token, $OrgID, $this->Locations[$Location]);
         $this->Server_UUID = $Server_UUID;
     }
 
@@ -795,7 +793,7 @@ class ScalewayServer
             } else {
                 $this->Server_State = $API_Request["state"];
             }
-            
+
             $this->Server_Tags = $API_Request["tags"];
             $this->Server_Sec_Group = $API_Request["security_group"]["name"];
 
@@ -863,10 +861,11 @@ class ScalewayServer
     /**
      * Delete current server with all of its resource (Volumes, reserved IP), use ->queryInfo for returned message in case of failed.
      *
-     * @return  bool    TRUE for success, FALSE otherwise.
+     * @param   bool  $Delete_Reserved_IP|false     Delete the attached IPv4? Default is false
+     * @return  bool                                TRUE for success, FALSE otherwise.
      *
      */
-    public function Delete_Server()
+    public function Delete_Server($Delete_Reserved_IP = false)
     {
         // Getting the infos before deletion to make sure it's still valid
         $API_Request = $this->ScwAPI->Scw_Retrieve_Server_Info($this->Server_UUID);
@@ -875,21 +874,23 @@ class ScalewayServer
             goto Abort;
         }
 
-        // Getting its reserved IPv4 UUID
-        $Attached_IPv4_UUID = $this->IP["IPv4_UUID"];
+        if ($Delete_Reserved_IP) {
+            // Getting its reserved IPv4 UUID
+            $Attached_IPv4_UUID = $this->IP["IPv4_UUID"];
 
-        // Detach its reserved IP, this function will detatch if the second param is NULL
-        $API_Request = $this->ScwAPI->Scw_Attach_Reserved_IP($Attached_IPv4_UUID);
+            // Detach its reserved IP, this function will detatch if the second param is NULL
+            $API_Request = $this->ScwAPI->Scw_Attach_Reserved_IP($Attached_IPv4_UUID);
 
-        if (!empty($API_Request["ERROR"])) {
-            goto Abort;
-        }
+            if (!empty($API_Request["ERROR"])) {
+                goto Abort;
+            }
 
-        // Delete its reserved IP
-        $API_Request = $this->ScwAPI->Scw_Delete_Reserved_IP($Attached_IPv4_UUID);
-    
-        if (!empty($API_Request["ERROR"])) {
-            goto Abort;
+            // Delete its reserved IP
+            $API_Request = $this->ScwAPI->Scw_Delete_Reserved_IP($Attached_IPv4_UUID);
+
+            if (!empty($API_Request["ERROR"])) {
+                goto Abort;
+            }
         }
 
         $API_Request = $this->ScwAPI->Scw_Server_Action($this->Server_UUID, "terminate");
@@ -1128,6 +1129,24 @@ class ScalewayServer
         }
     }
 
+    /**
+     * Attach/detatch a Reserved IPv4
+     *
+     * @param   string      $IP_UUID            IP's UUID.
+     * @param   string      $Server_UUID|null   Server's UUID, leave empty for Detatch.
+     * @return  bool                            TRUE for success, FALSE otherwise.
+     */
+    public function Attach_Reserved_IP($IP_UUID, $Server_UUID = null)
+    {
+        $API_Request = $this->ScwAPI->Scw_Attach_Reserved_IP($IP_UUID, $Server_UUID = null);
+        if (empty($API_Request["ERROR"])) {
+            return true;
+        } else {
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+            return false;
+        }
+    }
 }
 
 //  ██╗    ██╗██╗  ██╗███╗   ███╗ ██████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
@@ -1187,7 +1206,7 @@ function Scaleway_CreateAccount(array $params)
     $ClientID = $params["model"]["client"]["id"];
     $OrderID = $params["model"]["orderid"];
     $ServiceID = $params["serviceid"];
-    
+
     $OS_Name = $params["customfields"]["Operating System"];
 
     $RequestLog = "Token: " . $Token . PHP_EOL .
@@ -1223,15 +1242,13 @@ function Scaleway_CreateAccount(array $params)
 
         // Abort if failed
         if (isValidUUID($Reserved_IPv4_UUID)) {
-
             if ($ScalewayServer->Create_New_Server($Hostname, $Snapshot_UUID, $Server_Type, $Server_Tags, $Server_Username, $Server_Password, $Reserved_IPv4_UUID)) {
                 $LocalAPI_Data["serviceid"] = $ServiceID;
                 $LocalAPI_Data["serviceusername"] = $Server_Username;
                 $LocalAPI_Data["servicepassword"] = $Server_Password;
                 $LocalAPI_Data["customfields"] = base64_encode(serialize(array(
                                                                         "Server ID"=> $ScalewayServer->Server_UUID,
-                                                                        "Operating System" => $OS_Name,
-                                                                        "OS Status" => "Installed"
+                                                                        "Operating System" => $OS_Name
                                                                         )));
 
                 localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
@@ -1243,8 +1260,6 @@ function Scaleway_CreateAccount(array $params)
         } else {
             $Return = "Failed to New_Reserved_IP: " . $ScalewayServer->queryInfo;
         }
-
-
     } else {
         $Return = "INVALID FUNCTION REQUEST";
     }
@@ -1360,7 +1375,7 @@ function Scaleway_TerminateAccount(array $params)
             goto Abort;
         }
 
-        if ($ScalewayServer->Delete_Server()) {
+        if ($ScalewayServer->Delete_Server(true)) {
             $LocalAPI_Data["serviceid"] = $params["serviceid"];
             $LocalAPI_Data["status"] = "Terminated";
             $LocalAPI_Data["customfields"] = base64_encode(serialize(array("Server ID"=> "TERMINATED-" . $Server_UUID )));
@@ -1452,6 +1467,7 @@ function Scaleway_AdminServicesTabFields(array $params)
         // Return an array based on the function's response.
         $Return = array(
             'Server name' => $ScalewayServer->Hostname,
+            'Go to Scaleway Panel' => '<a href="https://cloud.scaleway.com/#/zones/' . $ScalewayServer->Locations[$Location] . '/servers/' . $Server_UUID . '" target="_blank">Open</a>',
             'Server state' => $ScalewayServer->Server_State,
             'Disk' => $ScalewayServer->Server_Specs["Disk"] . "GB [" . implode($ScalewayServer->Server_Disks, ", ") . "]",
             'Core' => $ScalewayServer->Server_Specs["Core"],
@@ -1614,15 +1630,13 @@ function Scaleway_ClientArea(array $params)
     $Location = $params["customfields"]["Location"];
     $ServiceID = $params["serviceid"];
 
-    $OS_Status = $params["customfields"]["OS Status"];
-
     $RequestLog = "Token: " . $Token . PHP_EOL .
                   "OrgID: " . $OrgID . PHP_EOL .
                   "Server_UUID: " . $Server_UUID . PHP_EOL .
                   "Location: " . $Location . PHP_EOL . PHP_EOL .
                   "Raw Param: " . PHP_EOL . print_r($params, true);
 
-    
+
     $Service_Status = $params["status"];
     if ($Service_Status != "Active") {
         $Return = array('tabOverviewReplacementTemplate' => 'error.tpl',
@@ -1630,7 +1644,7 @@ function Scaleway_ClientArea(array $params)
                                                     'usefulErrorHelper' => "Sorry, your service is currently " . $Service_Status,
                                                     )
                         );
-        
+
         goto Abort;
     }
 
@@ -1646,7 +1660,7 @@ function Scaleway_ClientArea(array $params)
             goto Abort;
         }
 
-        if ($_SERVER['REQUEST_METHOD'] == "POST" && strpos($ScalewayServer->Server_State, 'ARCHIVED') == false) { // Prevent user to do any action to the archived server
+        if ($_SERVER['REQUEST_METHOD'] == "POST") {
             $ClientAction=customAction($params);
         }
 
@@ -1661,15 +1675,6 @@ function Scaleway_ClientArea(array $params)
             $Is_Running = -1;
         }
 
-        if ($OS_Status == "Installed") {
-            $Server_State = $ScalewayServer->Server_State;
-        } elseif (isValidUUID($OS_Status)) {
-            Server_Install_OS($params);
-            $Server_State = '<span class="label label-primary">Finishing OS installation...</span>';
-        } else {
-            $Server_State = '<span class="label label-primary">Installing OS...</span>';
-        }
-        
         foreach (getOSList($params["pid"]) as $OS_Item) {
             $Available_OS .= "<option>" . $OS_Item . "</option>" . PHP_EOL;
         }
@@ -1677,11 +1682,10 @@ function Scaleway_ClientArea(array $params)
         $Return = array('templateVariables' => array(
                                                     'Action_Result' => $ClientAction,
 
-
                                                     'Service_ID' => $ServiceID,
                                                     'Server_UUID' =>$ScalewayServer->Server_UUID,
                                                     'Hostname' => $ScalewayServer->Hostname,
-                                                    'Server_State' => $Server_State,
+                                                    'Server_State' => $ScalewayServer->Server_State,
                                                     'IPv4_Public' => $ScalewayServer->IP["IPv4_Global"],
                                                     'IPv4_Private' => $ScalewayServer->IP["IPv4_Private"],
                                                     'IPv6' => $ScalewayServer->IP["IPv6_Global"],
@@ -1691,14 +1695,9 @@ function Scaleway_ClientArea(array $params)
                                                     'RAM' => $ScalewayServer->Server_Specs["RAM"] . "GB",
                                                     'Disk' => $ScalewayServer->Server_Specs["Disk"] . "GB",
                                                     'OS' => $params["customfields"]["Operating System"],
-                                                    'Creation_Date' =>$ScalewayServer->Creation_Date,
-                                                    'Modification_Date' => $ScalewayServer->Modification_Date,
                                                     'Location' => $Location,
                                                     'Security_Group' => $ScalewayServer->Server_Sec_Group,
-
                                                     'Available_OS' => $Available_OS,
-
-
                                                     'Is_Running' => $Is_Running,
                                                     )
                             );
@@ -1708,7 +1707,7 @@ function Scaleway_ClientArea(array $params)
                                                     'usefulErrorHelper' => "INVALID FUNCTION REQUEST",
                                                     )
                         );
-        
+
         goto Abort;
     }
 
@@ -1781,9 +1780,6 @@ function customAction(array $params)
 
     $ScalewayServer = new ScalewayServer($Token, $OrgID, $Location, $Server_UUID);
 
-
-    $Return = "ERROR: No valid action.";
-
     if (!empty($_POST["Power"])) { // Power action
         switch ($_POST['Power']) {
             case "Reboot":
@@ -1830,6 +1826,8 @@ function customAction(array $params)
                 $Return = "ERROR: Can't update Hostname, please contact customer support.";
             }
         }
+    } else {
+        $Return = "ERROR: No valid action.";
     }
 
     return $Return;
@@ -1838,28 +1836,30 @@ function customAction(array $params)
 /**
  * Switch the Server's OS to another one.
  *
- * How it's work: Scaleway does not support OS reinstallation, so this function comes up with a creative way to "replace" that function
- * It "Archive" the server, create a New Volume from Snapshot, write that Volume UUID to customfields["OS Status"] and wait until
- * client Refreshed the page again.
+ * How it's work: Scaleway does not support OS reinstallation, so this function Detatch the old IPv4, delete the machine and create another with the old IPv4 UUID.
  *
- * On next called, it will check if the server is in the Archived state, if it is then it will Detatch the #0 Volume and replace it with
- * the new Volume UUID in the customfields["OS Status"], delete the old RootFS Volume, boot up the machine.
- *
- * @param   array   $params             WHMCS's function params
- * @param   string  $New_OS_Name|null   New OS name, must be a Snapshot name, if leave it NULL then it will check if the server are in the "waiting state"
- * @return  string                      Error message
+ * @param   array   $params         WHMCS's function params
+ * @param   string  $New_OS_Name    New OS name, must be a Snapshot name.
+ * @return  string                  Error message
  */
-function Server_Install_OS(array $params, $New_OS_Name = null)
+function Server_Install_OS(array $params, $New_OS_Name)
 {
     $Token = $params["configoption1"];
     $OrgID = $params["configoption2"];
     $Server_UUID = $params["customfields"]["Server ID"];
     $Location = $params["customfields"]["Location"];
     $Hostname = $params["domain"];
-    $OS_Status = $params["customfields"]["OS Status"];
 
-    if ($OS_Status == "Installed" && empty($New_OS_Name)) {
-        $Return = "INFO: No OS installation in progress.";
+    $Server_Type = $params["configoption3"];
+    $Current_Username = $params["username"];
+    $Current_Password = $params["password"];
+
+    $ClientID = $params["model"]["client"]["id"];
+    $OrderID = $params["model"]["orderid"];
+    $ServiceID = $params["serviceid"];
+
+    if (empty($New_OS_Name)) {
+        $Return = "ERROR: No valid OS.";
         goto Abort;
     }
 
@@ -1871,74 +1871,45 @@ function Server_Install_OS(array $params, $New_OS_Name = null)
             goto Abort;
         }
 
-        if (isValidUUID($OS_Status) && empty($New_OS_Name)) {
+        $Old_IPv4_UUID = $ScalewayServer->IP["IPv4_UUID"];
+        if (!isValidUUID($Old_IPv4_UUID)) {
+            $Return = "ERROR: Not valid Old_IPv4_UUID.";
+            goto Abort;
+        }
 
-            // There's an ongoing OS reinstallation, check archival status then mount the disks
-            if (strpos($ScalewayServer->Server_State, 'ARCHIVED') != false) {
-                $New_Volume_UUID_List = $ScalewayServer->Server_Disks;
-                $Old_RootFS_UUID = $New_Volume_UUID_List[0];
-                $New_Volume_UUID_List[0] = $OS_Status;
+        if (!$ScalewayServer->Attach_Reserved_IP($Old_IPv4_UUID)) {
+            $Return = "ERROR: Can't Reinstall OS.<br>Reason: RVJSX0RFVEFUQ0hfRkFJTEVE<br>Please contact customer support."; // Base64-encoded reason, lol
+            goto Abort;
+        }
 
-                if ($ScalewayServer->Modify_Server_Volumes($New_Volume_UUID_List)) {
-                    $ScalewayServer->Delete_Volume($Old_RootFS_UUID);
+        if (!$ScalewayServer->Delete_Server()) {
+            $Return = "ERROR: Can't Reinstall OS.<br>Reason: RVJSX0RFTEVURV9GQUlMRUQ<br>Please contact customer support.";
+            goto Abort;
+        }
 
-                    // Writing to OS Status the UUID of New Volume, it will get detect and mounted on next refresh
-                    $LocalAPI_Data["serviceid"] = $params["serviceid"];
-                    $LocalAPI_Data["customfields"] = base64_encode(serialize(array( "OS Status" => "Installed" )));
+        $Snapshot_UUID = $ScalewayServer->Retrieve_Snapshot_UUID($New_OS_Name);
 
-                    localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+        if (!isValidUUID($Snapshot_UUID)) {
+            $Return =  "ERROR: Invalid OS: " . $New_OS_Name;
+            goto Abort;
+        }
 
-                    // Boot the server, yay!
-                    $ScalewayServer->Start_Server();
+        $Server_Tags = array("ClientID: " . $ClientID,
+                             "OrderID: " . $OrderID,
+                             "ServiceID: " . $ServiceID);
 
-                    $Return = "SUCCESS: New volume attached";
-                } else {
-                    $Return = "ERROR: Volume attach failed.";
-                    goto Abort;
-                }
-            } else {
-                $Return = "INFO: Server state still not archived, can't continue";
-                goto Abort;
-            }
-        } elseif (!empty($New_OS_Name)) { // Need to "install"
-            if (strpos($ScalewayServer->Server_State, 'RUNNING') == false) {
-                $Return = "ERROR: Server must be running for reinstall.";
-                goto Abort;
-            } else {
+        if ($ScalewayServer->Create_New_Server($Hostname, $Snapshot_UUID, $Server_Type, $Server_Tags, $Current_Username, $Current_Password, $Old_IPv4_UUID)) {
+            $LocalAPI_Data["serviceid"] = $ServiceID;
+            $LocalAPI_Data["customfields"] = base64_encode(serialize(array(
+                                                                    "Server ID"=> $ScalewayServer->Server_UUID,
+                                                                    "Operating System" => $New_OS_Name
+                                                                    )));
 
-                // Archive server for detatch the Disks on next request
-                if ($ScalewayServer->Archive_Server()) {
+            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
 
-                    // Get New OS's Snapshot ID
-                    $Snapshot_UUID = $ScalewayServer->Retrieve_Snapshot_UUID($New_OS_Name);
-
-                    if (!isValidUUID($Snapshot_UUID)) {
-                        $Return =  "Invalid OS: " . $New_OS_Name;
-                        goto Abort;
-                    } else {
-
-                        // New RootFS Volume created from Snapshot
-                        $Volume_UUID = $ScalewayServer->Volume_from_Snapshot($Snapshot_UUID, $Hostname . "-rootfs");
-
-                        if (!isValidUUID($Volume_UUID)) {
-                            $Return =  "Create Volume failed: " .  $ScalewayServer->queryInfo;
-                            goto Abort;
-                        } else {
-
-                            // Writing to OS Status the UUID of New Volume, it will get detect and mounted on next refresh
-                            $LocalAPI_Data["serviceid"] = $params["serviceid"];
-                            $LocalAPI_Data["customfields"] = base64_encode(serialize(array( "Operating System" => $New_OS_Name,
-                                                                                            "OS Status" => $Volume_UUID )));
-                            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
-                
-                            $Return = "SUCCESS: OS is being reinstalled...<br>Please Refresh your panel to check for status.";
-                        }
-                    }
-                } else {
-                    $Return = "ERROR Archive_Server(): " . $ScalewayServer->queryInfo;
-                    goto Abort;
-                }
-            }
+            $Return = "SUCCESS: OS installed.";
+        } else {
+            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
         }
     } else {
         $Return = "ERROR: Invalid function request";

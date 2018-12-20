@@ -41,9 +41,7 @@ if ( window.history.replaceState ) {
         <p>CPU Core: {$CPU_Core}</p>
         <p>RAM: {$RAM}</p>
         <p>Disk: {$Disk}</p>
-        <p>Operating System: {$OS}</p>
-        <p>Creation Date: {$Creation_Date}</p>
-        <p>Modification Date: {$Modification_Date}</p>
+        <p>Operating System: <b>{$OS}</b></p>
         <hr>
         <p>Location: {$Location}</p>
         <p>Allow STMP: {$Security_Group}</p>
