@@ -283,9 +283,9 @@ class ScalewayAPI
      * @param   string  $Server_Password    New server's SSH Password.
      * @return  array                       Returned data from Call_Scaleway().
      */
-    public function Scw_Create_New_Server($Server_Hostname, $Snapshot_UUID, $CommercialType, $Tags, $Server_Username, $Server_Password)
+    public function Scw_Create_New_Server($Server_Hostname, $Snapshot_UUID, $CommercialType, $Tags, $Server_Username, $Server_Password, $Reserved_IPv4_UUID)
     {
-        if (empty($Server_Hostname) || !isValidUUID($Snapshot_UUID) || !array_key_exists($CommercialType, $this->CommercialTypes) || empty($Tags) || empty($Server_Username) || empty($Server_Password)) {
+        if (empty($Server_Hostname) || !isValidUUID($Snapshot_UUID) || !array_key_exists($CommercialType, $this->CommercialTypes) || empty($Tags) || empty($Server_Username) || empty($Server_Password) || !isValidUUID($Reserved_IPv4_UUID)) {
             $Return = array(
                 "ERROR" => "Input data is invalid",
                 "DATA" => ""
@@ -349,65 +349,48 @@ class ScalewayAPI
                 array_push($VolumesArray, $AdditionalVolumeArray[$i]);
             }
 
-
-            // Reserve an IP address
-            $Return = $this->Scw_New_Reserved_IP();
+            // Finally create the server
+            $Data =
+            array(
+                "organization"      => $this->OrgID,
+                "name"              => $Server_Hostname,
+                "commercial_type"   => $CommercialType,
+                "tags"              => $Tags,
+                "boot_type"         => "local",
+                "public_ip"         => $Reserved_IPv4_UUID,
+                "enable_ipv6"       => true,
+                "volumes"           =>  (object) $VolumesArray
+            );
+        
+        
+            $Endpoint = "/servers";
+            $Data = json_encode($Data, JSON_PRETTY_PRINT);
+            $Return = $this->Call_Scaleway($this->Token, "POST", $Endpoint, $Data, "application/json");
 
             // Abort if failed
-            $Log_Stage = "Scw_New_Reserved_IP";
+            $Log_Stage = "Scw_Create_New_Server";
             if (empty($Return["ERROR"])) {
-                $Reserved_IP_UUID = json_decode($Return["DATA"], true)["ip"]["id"];
-
-                // Modify PTR of Reserved IP
-                $Return = $this->Scw_Modify_IP_PTR($Reserved_IP_UUID, "customer.jiffy.host");
+                $Server_UUID = json_decode($Return["DATA"], true)["server"]["id"];
+        
+                // Set User:Pass to CloudInit data, there will be a script running on first boot to do the password setup
+                $Temp_Return = $this->Scw_Modify_CloudInit($Server_UUID, $Server_Username . ":" . $Server_Password);
 
                 // Abort if failed
-                $Log_Stage = "Scw_Modify_IP_PTR";
-                if (empty($Return["ERROR"])) {
+                $Log_Stage = "Scw_Modify_CloudInit";
+                if (empty($Temp_Return["ERROR"])) {
 
-                    // Finally create the server
-                    $Data =
-                    array(
-                        "organization"      => $this->OrgID,
-                        "name"              => $Server_Hostname,
-                        "commercial_type"   => $CommercialType,
-                        "tags"              => $Tags,
-                        "boot_type"         => "local",
-                        "public_ip"         => $Reserved_IP_UUID,
-                        "enable_ipv6"       => true,
-                        "volumes"           =>  (object) $VolumesArray
-                    );
-        
-        
-                    $Endpoint = "/servers";
-                    $Data = json_encode($Data, JSON_PRETTY_PRINT);
-                    $Return = $this->Call_Scaleway($this->Token, "POST", $Endpoint, $Data, "application/json");
+                    // Power ON server
+                    $Temp_Return = $this->Scw_Server_Action($Server_UUID, "poweron");
 
-                    // Abort if failed
-                    $Log_Stage = "Scw_Create_New_Server";
-                    if (empty($Return["ERROR"])) {
-                        $Server_UUID = json_decode($Return["DATA"], true)["server"]["id"];
-            
-                        // Set User:Pass to CloudInit data, there will be a script running on first boot to do the password setup
-                        $Temp_Return = $this->Scw_Modify_CloudInit($Server_UUID, $Server_Username . ":" . $Server_Password);
-
-                        // Abort if failed
-                        $Log_Stage = "Scw_Modify_CloudInit";
-                        if (empty($Temp_Return["ERROR"])) {
-
-                            // Power ON server
-                            $Temp_Return = $this->Scw_Server_Action($Server_UUID, "poweron");
-
-                            $Log_Stage = "Scw_Server_Action";
-                            if (!empty($Temp_Return["ERROR"])) {
-                                $Return = $Temp_Return;
-                            }
-                        } else {
-                            $Return = $Temp_Return;
-                        }
+                    $Log_Stage = "Scw_Server_Action";
+                    if (!empty($Temp_Return["ERROR"])) {
+                        $Return = $Temp_Return;
                     }
+                } else {
+                    $Return = $Temp_Return;
                 }
             }
+            
         }
 
         $Input_Data .= "Server_Hostname:"   . PHP_EOL . $Server_Hostname        . PHP_EOL . PHP_EOL;
@@ -861,9 +844,9 @@ class ScalewayServer
      * @return  bool                        TRUE for success, FALSE otherwise.
      *
      */
-    public function Create_New_Server($Hostname, $Snapshot_UUID, $Server_Type, $Tags = array(), $Server_Username, $Server_Password)
+    public function Create_New_Server($Hostname, $Snapshot_UUID, $Server_Type, $Tags = array(), $Server_Username, $Server_Password, $Reserved_IPv4_UUID)
     {
-        $API_Request = $this->ScwAPI->Scw_Create_New_Server($this->ServerPrefix . $Hostname, $Snapshot_UUID, $Server_Type, $Tags, $Server_Username, $Server_Password);
+        $API_Request = $this->ScwAPI->Scw_Create_New_Server($this->ServerPrefix . $Hostname, $Snapshot_UUID, $Server_Type, $Tags, $Server_Username, $Server_Password, $Reserved_IPv4_UUID);
         if (empty($API_Request["ERROR"])) {
             $serverInfo = json_decode($API_Request["DATA"], true);
             $serverInfo = $serverInfo["server"];
@@ -1122,6 +1105,29 @@ class ScalewayServer
             return false;
         }
     }
+
+    /**
+     * Create a Reserved IPv4
+     *
+     * @return  string  New Reserved IPv4 UUID.
+     */
+    public function New_Reserved_IP()
+    {
+        $API_Request = $this->ScwAPI->Scw_New_Reserved_IP();
+        if (empty($API_Request["ERROR"])) {
+            $IPv4_UUID = json_decode($API_Request["DATA"], true)["ip"]["id"];
+
+            // Default PTR for new Reserved IP
+            $this->ScwAPI->Scw_Modify_IP_PTR($IPv4_UUID, "customer.jiffy.host");
+
+            return $IPv4_UUID;
+        } else {
+            $Backend_Message = json_decode($API_Request["DATA"], true)["message"];
+            $this->queryInfo = !empty($Backend_Message) ? $Backend_Message : $API_Request["ERROR"];
+            return null;
+        }
+    }
+
 }
 
 //  ██╗    ██╗██╗  ██╗███╗   ███╗ ██████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
@@ -1209,25 +1215,36 @@ function Scaleway_CreateAccount(array $params)
                              "OrderID: " . $OrderID,
                              "ServiceID: " . $ServiceID);
 
-        $ServerUsername = "root";
-        $ServerPassword = md5($params["password"]);
+        $Server_Username = "root";
+        $Server_Password = md5($params["password"]);
 
-        if ($ScalewayServer->Create_New_Server($Hostname, $Snapshot_UUID, $Server_Type, $Server_Tags, $ServerUsername, $ServerPassword)) {
-            $LocalAPI_Data["serviceid"] = $ServiceID;
-            $LocalAPI_Data["serviceusername"] = $ServerUsername;
-            $LocalAPI_Data["servicepassword"] = $ServerPassword;
-            $LocalAPI_Data["customfields"] = base64_encode(serialize(array(
-                                                                    "Server ID"=> $ScalewayServer->Server_UUID,
-                                                                    "Operating System" => $OS_Name,
-                                                                    "OS Status" => "Installed"
-                                                                    )));
+        // Reserve an IPv4 address
+        $Reserved_IPv4_UUID = $ScalewayServer->New_Reserved_IP();
 
-            localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+        // Abort if failed
+        if (isValidUUID($Reserved_IPv4_UUID)) {
 
-            $Return = "success";
+            if ($ScalewayServer->Create_New_Server($Hostname, $Snapshot_UUID, $Server_Type, $Server_Tags, $Server_Username, $Server_Password, $Reserved_IPv4_UUID)) {
+                $LocalAPI_Data["serviceid"] = $ServiceID;
+                $LocalAPI_Data["serviceusername"] = $Server_Username;
+                $LocalAPI_Data["servicepassword"] = $Server_Password;
+                $LocalAPI_Data["customfields"] = base64_encode(serialize(array(
+                                                                        "Server ID"=> $ScalewayServer->Server_UUID,
+                                                                        "Operating System" => $OS_Name,
+                                                                        "OS Status" => "Installed"
+                                                                        )));
+
+                localAPI("UpdateClientProduct", $LocalAPI_Data, getAdminUserName());
+
+                $Return = "success";
+            } else {
+                $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
+            }
         } else {
-            $Return = "Failed Reason: " . $ScalewayServer->queryInfo;
+            $Return = "Failed to New_Reserved_IP: " . $ScalewayServer->queryInfo;
         }
+
+
     } else {
         $Return = "INVALID FUNCTION REQUEST";
     }
