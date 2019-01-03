@@ -1119,7 +1119,7 @@ class ScalewayServer
             $IPv4_UUID = json_decode($API_Request["DATA"], true)["ip"]["id"];
 
             // Default PTR for new Reserved IP
-            $this->ScwAPI->Scw_Modify_IP_PTR($IPv4_UUID, "customer.jiffy.host");
+            $this->ScwAPI->Scw_Modify_IP_PTR($IPv4_UUID, "customer.spinbe.io");
 
             return $IPv4_UUID;
         } else {
